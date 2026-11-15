@@ -18,15 +18,25 @@ const { Agent } = require('./agent');
 const { MobileServer } = require('./mobile');
 const { checkUpdate } = require('./updates');
 
-const APP_ROOT = path.join(__dirname, '..', '..');
+// 打包后 __dirname 位于 resources/app.asar/src/main；用 app.getAppPath() 避免
+// 安装到任意目录（含空格、中文、其他盘）时依赖固定的相对层级。
+const APP_ROOT = app.getAppPath();
 const isDev = !app.isPackaged;
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'etcfile', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
 ]);
 
-if (!app.requestSingleInstanceLock()) {
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
   app.quit();
+}
+
+function focusExistingWindow() {
+  if (!win || win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
 }
 
 let win = null;
@@ -51,7 +61,9 @@ function createWindow() {
     backgroundColor: '#0a0a0b',
     show: false,
     title: 'agent_etc',
-    icon: path.join(APP_ROOT, 'build', 'icon.png'),
+    ...(fs.existsSync(path.join(APP_ROOT, 'build', 'icon.png'))
+      ? { icon: path.join(APP_ROOT, 'build', 'icon.png') }
+      : {}),
     autoHideMenuBar: true,
     ...(process.platform === 'win32' ? {
       titleBarStyle: 'hidden',
@@ -68,6 +80,11 @@ function createWindow() {
 
   win.loadFile(path.join(APP_ROOT, 'src', 'renderer', 'index.html'));
   win.once('ready-to-show', () => win.show());
+  win.webContents.on('did-fail-load', (_event, code, desc, url) => {
+    const msg = `界面加载失败（${code} ${desc}）\n${url || ''}`;
+    try { fs.appendFileSync(path.join(app.getPath('userData'), 'startup-error.log'), `${new Date().toISOString()} ${msg}\n`); } catch (_e) {}
+    try { dialog.showErrorBox('agent_etc 界面加载失败', msg); } catch (_e) {}
+  });
   win.on('closed', () => { win = null; });
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
@@ -499,6 +516,12 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+  app.on('second-instance', focusExistingWindow);
+}).catch((err) => {
+  const msg = String((err && err.stack) || err || '未知启动错误');
+  try { fs.appendFileSync(path.join(app.getPath('userData'), 'startup-error.log'), `${new Date().toISOString()} ${msg}\n`); } catch (_e) {}
+  try { dialog.showErrorBox('agent_etc 启动失败', msg.slice(0, 1200)); } catch (_e) {}
+  app.quit();
 });
 
 app.on('window-all-closed', () => {

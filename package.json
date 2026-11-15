@@ -1,6 +1,6 @@
 {
   "name": "agent_etc",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "agent_etc — 可自改装的桌面 Agent 工作台：多模型 API、本地 GGUF、插件、浏览器操作",
   "main": "src/main/main.js",
   "author": "ETC",
