@@ -12,4 +12,5 @@ vendor/
 # Android standalone build
 android-standalone/llama.cpp/
 android-standalone/build-android/
+android-standalone/build-android-v7a/
 build/

@@ -37,8 +37,10 @@ public class NativeBridge {
     private final Handler ui = new Handler(Looper.getMainLooper());
     private String pendingPickId = null;
     private String pendingWorkspaceId = null;
+    private String pendingTextId = null;
     private static final int REQ_MODEL = 7001;
     private static final int REQ_WORKSPACE = 7002;
+    private static final int REQ_TEXT = 7003;
     private Uri workspaceUri = null;
 
     public NativeBridge(Activity a, WebView w) {
@@ -83,7 +85,7 @@ public class NativeBridge {
                 conn.setRequestMethod(method == null || method.isEmpty() ? "GET" : method.toUpperCase());
                 conn.setConnectTimeout(20000);
                 conn.setReadTimeout(120000);
-                conn.setRequestProperty("User-Agent", "agent_etc-mobile/1.4.0");
+                conn.setRequestProperty("User-Agent", "agent_etc-mobile/1.6.0");
                 if (headersJson != null && !headersJson.isEmpty()) {
                     JSONObject h = new JSONObject(headersJson);
                     Iterator<String> it = h.keys();
@@ -123,6 +125,34 @@ public class NativeBridge {
     }
 
     // ---------- local model ----------
+    // ---------- accessibility screen (user-granted) ----------
+    @JavascriptInterface
+    public String accessibilityEnabled() {
+        return AgentAccessibilityService.isReady() ? "true" : "false";
+    }
+
+    @JavascriptInterface
+    public String screenRead() {
+        if (!AgentAccessibilityService.isReady()) return "{\"enabled\":false,\"error\":\"无障碍服务未开启，请在系统设置里授权 agent_etc\"}";
+        return AgentAccessibilityService.dumpScreen();
+    }
+
+    @JavascriptInterface
+    public String screenTap(int x, int y) { return AgentAccessibilityService.tap(x, y); }
+
+    @JavascriptInterface
+    public String screenBack() { return AgentAccessibilityService.back(); }
+
+    @JavascriptInterface
+    public String openAccessibility() {
+        try {
+            Intent i = new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            activity.startActivity(i);
+            return "已打开系统无障碍设置；请找到 agent_etc 并开启，然后回到这里点“读一次屏幕”。";
+        } catch (Exception e) { return "打开设置失败：" + e.getMessage(); }
+    }
+
     @JavascriptInterface
     public void pickModel(final String id) {
         pendingPickId = id;
@@ -132,7 +162,74 @@ public class NativeBridge {
         ui.post(() -> activity.startActivityForResult(i, REQ_MODEL));
     }
 
+    @JavascriptInterface
+    public void pickTextFile(final String id) {
+        pendingTextId = id;
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType("*/*");
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        ui.post(() -> activity.startActivityForResult(i, REQ_TEXT));
+    }
+
+    private String displayName(Uri uri, String fallback) {
+        try (Cursor c = activity.getContentResolver().query(uri, null, null, null, null)) {
+            if (c != null && c.moveToFirst()) {
+                int idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+                if (idx >= 0) {
+                    String n = c.getString(idx);
+                    if (n != null && !n.isEmpty()) return n;
+                }
+            }
+        } catch (Exception ignored) {}
+        String seg = uri.getLastPathSegment();
+        return seg == null || seg.isEmpty() ? fallback : seg;
+    }
+
+    private String readText(Uri uri, String name) throws Exception {
+        String type = activity.getContentResolver().getType(uri);
+        String lower = name == null ? "" : name.toLowerCase();
+        boolean byExt = lower.endsWith(".md") || lower.endsWith(".txt") || lower.endsWith(".json")
+                || lower.endsWith(".yaml") || lower.endsWith(".yml") || lower.endsWith(".csv")
+                || lower.endsWith(".log") || lower.endsWith(".xml") || lower.endsWith(".html")
+                || lower.endsWith(".js") || lower.endsWith(".ts") || lower.endsWith(".java")
+                || lower.endsWith(".py") || lower.endsWith(".sh") || lower.endsWith(".toml");
+        if (type != null && !type.startsWith("text/") && !type.equals("application/json")
+                && !type.equals("application/xml") && !type.equals("application/x-yaml") && !byExt) {
+            throw new Exception("不是文本文件（" + type + "）");
+        }
+        StringBuilder sb = new StringBuilder();
+        try (InputStream in = activity.getContentResolver().openInputStream(uri);
+             BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                if (sb.length() + line.length() > 262144) break;
+                sb.append(line).append('\n');
+            }
+        }
+        return sb.toString();
+    }
+
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQ_TEXT) {
+            final String id = pendingTextId == null ? "text" : pendingTextId;
+            pendingTextId = null;
+            if (resultCode != Activity.RESULT_OK || data == null || data.getData() == null) {
+                js("window.__textPicked(" + q(id) + "," + q("") + "," + q("") + "," + q("已取消") + ")");
+                return;
+            }
+            final Uri uri = data.getData();
+            new Thread(() -> {
+                try {
+                    String name = displayName(uri, "attachment.txt");
+                    String text = readText(uri, name);
+                    js("window.__textPicked(" + q(id) + "," + q(name) + "," + q(text) + "," + q("") + ")");
+                } catch (Exception e) {
+                    js("window.__textPicked(" + q(id) + "," + q("") + "," + q("") + "," + q(String.valueOf(e.getMessage())) + ")");
+                }
+            }).start();
+            return;
+        }
         if (requestCode == REQ_WORKSPACE) {
             final String id = pendingWorkspaceId == null ? "workspace" : pendingWorkspaceId;
             pendingWorkspaceId = null;
@@ -482,5 +579,5 @@ public class NativeBridge {
     }
 
     @JavascriptInterface
-    public String appVersion() { return "1.5.0"; }
+    public String appVersion() { return "1.6.0"; }
 }

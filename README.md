@@ -97,13 +97,14 @@ module.exports = {
 
 电脑端在顶栏切换，手机端在标题栏下方切换；切换会改变系统提示、温度和输出长度。
 
-## Android 独立版（1.5.0）
+## Android 独立版（1.6.0）
 
-`agent_etc-1.5.0-android.apk` 是**真正不依赖电脑**的手机 App：Agent 循环、会话、记忆、工具和 llama.cpp 推理都在手机内，不需要电脑开着。
+`agent_etc-1.6.0-android.apk` 是**真正不依赖电脑**的手机 App：Agent 循环、会话、记忆、工具和 llama.cpp 推理都在手机内，不需要电脑开着。本版同时打包 `arm64-v8a` 与 `armeabi-v7a`（32 位）两套原生库，32 位 ARM 手机也能加载本地 GGUF 引擎。
 
 - **云端**：设置里填你自己的 OpenAI 兼容接口（DeepSeek / Kimi / OpenAI / Ollama / 自建），Key 只存本机；
 - **本地 GGUF**：从系统文件选择器导入 `.gguf`（建议 0.5B–3B Q4），复制到应用私有目录后离线推理；
-- **手机工具**：工作目录文件读写（系统目录授权）、打开浏览器、GET 网页、分享、剪贴板、记忆、弹窗询问；
+- **手机工具**：工作目录文件读写（系统目录授权）、打开浏览器、GET 网页、分享、剪贴板、记忆、弹窗询问；新增文本附件、内置/导入技能、MCP 远程插件、屏幕文字读取与无障碍点击；
+- **32 位支持**：`lib/armeabi-v7a/libagentllama.so`（ELF32 ARM，已 strip）与 64 位库同时打入 APK；
 - **不预置第三方接口**；云端费用由你自己的 API 承担，本地模式完全离线；
 - 人机验证/验证码/支付：检测到就让用户本人完成，不代过。
 
@@ -111,10 +112,10 @@ module.exports = {
 
 ```bash
 bash scripts/fetch-llama-src.sh          # 下载 b12405 源码到 android-standalone/llama.cpp
-bash scripts/build-standalone-apk.sh     # arm64-v8a，NDK r26d，输出 dist/agent_etc-1.5.0-android.apk
+bash scripts/build-standalone-apk.sh     # arm64-v8a + armeabi-v7a，NDK r26d，输出 dist/agent_etc-1.6.0-android.apk
 ```
 
-> 1.3.0 的 25KB APK 是连接电脑的远程壳，已不是推荐用法；独立版请用 1.5.0。
+> 1.3.0 的 25KB APK 是连接电脑的远程壳，已不是推荐用法；独立版请用 1.6.0。
 
 ## 手机远程版（可选）
 
