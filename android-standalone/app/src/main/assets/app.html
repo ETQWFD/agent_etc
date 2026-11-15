@@ -222,27 +222,56 @@ const MODES = {
   model: { name: "建模", temp: 0.4, maxTokens: 3000, desc: "结构建模、代码、表格与流程" }
 };
 const SKILLS = [
-  { id: "auto", name: "自动", desc: "按任务自己选方法", prompt: "" },
-  { id: "office", name: "办公整理", desc: "总结、改写、表格、计划", prompt: "你擅长把杂乱信息整理成结论、清单、表格和可执行计划；先给结果，再给必要的依据。" },
-  { id: "research", name: "网页调研", desc: "检索、对比、摘录来源", prompt: "做网页调研时先明确要回答的问题，再用 http_fetch 读取真实页面；区分事实与推测，给出链接或来源。" },
-  { id: "code", name: "代码修改", desc: "定位、修改、验证", prompt: "处理代码任务时先定位文件和调用链，再给最小改动；写完代码要说明如何运行和验证，不要只给片段。" },
-  { id: "files", name: "本地文件", desc: "读写工作目录", prompt: "文件任务优先使用工作目录工具；写文件前确认路径和内容，读大文件只摘取相关部分。" },
-  { id: "writing", name: "写作", desc: "文案、方案、长文", prompt: "写作时先确定读者和目的，再给完整成稿；不要用套话，结构清楚，可直接使用。" }
+  { id: "auto", group: "通用", name: "自动", desc: "按任务自己选方法", prompt: "" },
+  { id: "office", group: "办公", name: "办公整理", desc: "总结、清单、邮件、计划", prompt: "你擅长把杂乱信息整理成结论、清单、邮件和可执行计划；先给结果，再给必要依据。" },
+  { id: "doc", group: "办公", name: "正式文书", desc: "报告、通知、方案、公文", prompt: "写正式文书先明确发文对象、目的和语气；结构完整、措辞准确，避免口水话和空泛表态。" },
+  { id: "minutes", group: "办公", name: "会议纪要", desc: "结论、待办、负责人", prompt: "整理会议内容时输出：结论、决定、待办（负责人/时间）、风险和待确认项；不要把讨论过程当结论。" },
+  { id: "sheet", group: "办公", name: "表格处理", desc: "Excel/CSV、公式、统计", prompt: "处理表格先确认字段、口径和缺失值；给公式或步骤时说明每列含义，并提醒备份原文件。" },
+  { id: "slides", group: "办公", name: "演示文稿", desc: "PPT 大纲、页面结构", prompt: "做演示先定受众和结论，再拆成每页一个观点；输出标题、要点、讲述提示，不堆大段文字。" },
+  { id: "data", group: "办公", name: "数据分析", desc: "指标、对比、异常", prompt: "分析数据先定义指标和口径，再给趋势、对比、异常和可能原因；区分事实与推测。" },
+  { id: "research", group: "调研", name: "网页调研", desc: "检索、对比、摘录来源", prompt: "做网页调研时先明确要回答的问题，再用 http_fetch 读取真实页面；区分事实与推测，给出链接或来源。" },
+  { id: "factcheck", group: "调研", name: "事实核查", desc: "查来源、找反证", prompt: "核查说法时先找原始来源和时间，再找独立来源交叉验证；找不到证据就明确说找不到，不要凑结论。" },
+  { id: "writing", group: "写作", name: "写作", desc: "文案、方案、长文", prompt: "写作时先确定读者和目的，再给完整成稿；不要套话，结构清楚，可直接使用。" },
+  { id: "copy", group: "写作", name: "营销文案", desc: "标题、卖点、转化", prompt: "写营销文案先提炼目标人群、核心卖点和行动理由；给多个标题/短文案备选，避免夸大和虚假承诺。" },
+  { id: "code", group: "开发", name: "代码修改", desc: "定位、修改、验证", prompt: "处理代码任务时先定位文件和调用链，再给最小改动；写完代码要说明如何运行和验证，不要只给片段。" },
+  { id: "debug", group: "开发", name: "排错调试", desc: "复现、日志、根因", prompt: "排错先复现并读完整报错/日志，再按最近改动和依赖逐层缩小范围；给验证步骤，不要凭感觉改。" },
+  { id: "android", group: "开发", name: "Android", desc: "Gradle、NDK、ABI、WebView", prompt: "处理 Android 任务时先确认 minSdk、targetSdk、ABI 和构建方式；改完要能打包并说明安装验证点。" },
+  { id: "frontend", group: "开发", name: "前端网页", desc: "HTML/CSS/JS、响应式", prompt: "做网页先确认尺寸和交互，再给可运行 HTML/CSS/JS；优先可用、清晰、移动端不溢出。" },
+  { id: "backend", group: "开发", name: "后端接口", desc: "API、数据、错误处理", prompt: "写接口先定义请求/响应、状态码和错误格式；注意鉴权、输入校验和并发边界。" },
+  { id: "git", group: "开发", name: "Git/GitHub", desc: "提交、分支、Release", prompt: "处理 Git 任务先看 status/diff/log，避免覆盖用户改动；提交信息说清改了什么，发布前检查构建和签名。" },
+  { id: "files", group: "工具", name: "本地文件", desc: "读写工作目录", prompt: "文件任务优先使用工作目录工具；写文件前确认路径和内容，读大文件只摘取相关部分。" },
+  { id: "translate", group: "工具", name: "翻译润色", desc: "中英互译、语气", prompt: "翻译先保留原意和专有名词，再按目标语言习惯调整；不确定的词给备选，不要擅自扩写。" },
+  { id: "study", group: "学习", name: "学习讲解", desc: "由浅入深、例子", prompt: "讲解概念先给一句话定义，再给例子、常见误区和练习；根据对方水平调整深度。" },
+  { id: "plan", group: "学习", name: "计划管理", desc: "拆解、优先级、复盘", prompt: "做计划先明确目标、截止时间和可用资源，再拆里程碑和下一步；给优先级和风险。" },
+  { id: "creative", group: "创意", name: "创意策划", desc: "点子、脚本、分镜", prompt: "做创意先定主题、受众和限制，再给多个方向；每个方向说明画面/节奏/执行成本。" },
+  { id: "life", group: "生活", name: "生活助手", desc: "出行、健康、日常", prompt: "生活问题先确认时间、地点和限制；给可执行方案和备选，涉及医疗/法律/金融时提醒找专业人士。" },
+  { id: "security", group: "安全", name: "安全隐私", desc: "权限、密钥、风险", prompt: "安全任务先识别资产、权限和数据流；给最小权限和可逆操作，密钥不要写入日志或公开文件。" },
+  { id: "memory", group: "工具", name: "记忆管理", desc: "记住偏好、项目背景", prompt: "值得长期保留的偏好、项目名、路径用 memory_save；一次性内容不要写入长期记忆。" }
 ];
 const DEFAULT_SETTINGS = {
   mode: "cloud", baseUrl: "", apiKey: "", model: "", temperature: 0.6, maxTokens: 2048,
-  localPath: "", localName: "", localCtx: 2048, localThreads: 4, localLoaded: false,
-  localInfo: "", workMode: "lean", workspaceName: "", workspaceUri: "",
+  localPath: "", localName: "", localCtx: 2048, localThreads: 4, localLoaded: false, localLoading: false,
+  localError: "", autoLoadLocal: true, workMode: "lean", workspaceName: "", workspaceUri: "",
   skillId: "auto", customSkills: [],
   mcpUrl: "", mcpToken: "", mcpTools: []
 };
 let settings = Object.assign({}, DEFAULT_SETTINGS, load("etc.settings", {}));
+settings.localLoading = false;
 if (!Array.isArray(settings.mcpServers)) {
   if (settings.mcpUrl) {
     settings.mcpServers = [{ id: "default", url: settings.mcpUrl, token: settings.mcpToken || "", tools: Array.isArray(settings.mcpTools) ? settings.mcpTools : [] }];
   } else settings.mcpServers = [];
 }
 if (!Array.isArray(settings.customSkills)) settings.customSkills = [];
+try {
+  if (!settings.localPath) {
+    const a = typeof Android !== "undefined" ? Android : null;
+    if (a && a.lastModel) {
+      const m = JSON.parse(a.lastModel() || "{}");
+      if (m.path) { settings.localPath = m.path; settings.localName = m.name || "本地模型"; }
+    }
+  }
+} catch (e) {}
 let sessions = load("etc.sessions", []);
 if (!Array.isArray(sessions)) sessions = [];
 sessions = sessions.filter(s => s && s.id && Array.isArray(s.messages));
@@ -255,6 +284,7 @@ let pendingHttp = {};
 let pendingLocal = {};
 let pendingAttach = null;
 let currentTab = "model";
+let skillQuery = "";
 
 if (!sessions.length) { newSession(false); }
 current = sessions.find(s => s.id === load("etc.last", "")) || sessions[0];
@@ -279,7 +309,7 @@ function persist() { compactSessions(); save("etc.settings", settings); save("et
 function toast(t) { const el = $("#toast"); el.textContent = t; el.classList.add("show"); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove("show"), 2200); }
 function android() { return typeof Android !== "undefined" ? Android : null; }
 function modeName() {
-  if (settings.mode === "local") return settings.localLoaded ? ("本地 · " + (settings.localName || "GGUF")) : "本地未加载";
+  if (settings.mode === "local") return settings.localLoading ? "本地 · 加载中…" : (settings.localLoaded ? ("本地 · " + (settings.localName || "GGUF")) : "本地未加载");
   return settings.model ? ("云端 · " + settings.model) : "未配置模型";
 }
 function modeOf() { return MODES[settings.workMode] || MODES.lean; }
@@ -287,12 +317,12 @@ function updateTop() {
   $("#modeChip").textContent = modeName();
   const md = modeOf();
   $("#enginePill").textContent = md.name + " · " + (settings.mode === "local" ? "本地" : "云端");
-  $("#enginePill").className = "pill" + (settings.mode === "local" && !settings.localLoaded ? " warn" : "");
+  $("#enginePill").className = "pill" + (settings.mode === "local" && !settings.localLoaded && !settings.localLoading ? " warn" : "");
   $("#memPill").textContent = "记忆 " + memories.length;
   document.querySelectorAll("#modeTabs button").forEach(b => b.classList.toggle("active", b.dataset.mode === settings.workMode));
   const name = settings.workspaceName || (settings.workspaceUri ? "已选择目录" : "未选择");
   $("#wsBar").innerHTML = "📁 工作目录 <b>" + esc(name) + "</b><span>" + (settings.workspaceUri ? "更换 ›" : "选择 ›") + "</span>";
-  $("#settingsVersion").textContent = (android() ? android().appVersion() : "1.6.1");
+  $("#settingsVersion").textContent = (android() ? android().appVersion() : "1.6.2");
 }
 
 function newSession(render = true) {
@@ -385,13 +415,18 @@ window.__httpResult = function (id, json) {
 };
 window.__modelPicked = function (id, name, path, size, err) {
   if (err) { toast("导入失败：" + err); return; }
-  settings.localName = name; settings.localPath = path; settings.localLoaded = false; persist(); updateTop(); renderSettings();
-  toast("模型已导入：" + name + " · " + bytes(size));
-  if (settings.mode === "local") setTimeout(maybeAutoLoadLocal, 200);
+  try { if (android() && android().rememberModel) android().rememberModel(path, name); } catch (e) {}
+  settings.localName = name; settings.localPath = path; settings.localLoaded = false; settings.localError = ""; settings.mode = "local"; persist(); updateTop(); renderSettings();
+  toast("模型已导入：" + name + " · " + bytes(size) + "，正在自动加载");
+  setTimeout(maybeAutoLoadLocal, 200);
 };
 window.__localStatus = function (id, ok, err, info) {
-  settings.localLoaded = !!ok; settings.localInfo = info || ""; persist(); updateTop(); renderSettings();
-  if (!ok) toast("加载失败：" + (err || "未知错误"));
+  settings.localLoading = false;
+  settings.localLoaded = !!ok;
+  settings.localInfo = info || "";
+  settings.localError = ok ? "" : (err || "未知错误");
+  persist(); updateTop(); renderSettings();
+  if (!ok) toast("加载失败：" + settings.localError);
   else toast("本地模型已加载");
 };
 window.__localInfo = function (id, info) { settings.localInfo = info || ""; persist(); renderSettings(); };
@@ -409,25 +444,28 @@ function pickWorkspace() {
   if (!a) { toast("不在 Android 环境"); return; }
   a.pickWorkspace("ws");
 }
-function maybeAutoLoadLocal() {
-  if (settings.mode !== "local" || !settings.localPath) return;
+function maybeAutoLoadLocal(force) {
+  if (settings.autoLoadLocal === false && !force) return;
+  if (!settings.localPath || settings.localLoading) return;
   if (!android()) return;
   try {
     if (android().localReady && android().localReady()) {
-      settings.localLoaded = true; updateTop(); return;
+      settings.localLoaded = true; settings.localLoading = false; updateTop(); return;
     }
   } catch (e) {}
   settings.localLoaded = false;
+  settings.localLoading = true;
   updateTop();
   toast("正在自动加载本地模型…");
-  setTimeout(() => loadLocal(), 400);
+  setTimeout(() => loadLocal(true), 350);
 }
 
 // ---------- local model ----------
-function loadLocal() {
+function loadLocal(fromAuto) {
   if (!settings.localPath) { toast("先选择 .gguf 模型"); return; }
   const a = android(); if (!a) { toast("不在 Android 环境"); return; }
-  toast("正在加载，请稍候…");
+  if (settings.localLoading && !fromAuto) { toast("模型正在加载，请稍候"); return; }
+  settings.localLoading = true; settings.localError = ""; persist(); updateTop(); renderSettings();
   a.loadLocal("load", settings.localPath, Number(settings.localCtx) || 2048, Number(settings.localThreads) || 4);
 }
 function localChat(roles, contents, maxTokens) {
@@ -537,7 +575,7 @@ async function mcpConnect(silent) {
   let srv = servers.find(x => x.url === url);
   if (!srv) { srv = { id: "srv_" + uid(), url: url, token: token, name: url.replace(/^https:\/\//, "").slice(0, 40), tools: [] }; servers.push(srv); }
   srv.token = token; srv.url = url;
-  await mcpRpc("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "agent_etc-mobile", version: "1.6.1" } }, srv);
+  await mcpRpc("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "agent_etc-mobile", version: "1.6.2" } }, srv);
   try { await mcpRpc("notifications/initialized", {}, srv); } catch (e) {}
   const r = await mcpRpc("tools/list", {}, srv);
   srv.tools = (r.tools || []).map(t => ({ name: t.name, description: t.description || "", inputSchema: t.inputSchema || null }));
@@ -580,7 +618,9 @@ const TOOL_DEFS = [
   { type: "function", function: { name: "screen_read", description: "读取当前手机屏幕上的可见文字和可点击控件（需要用户开启无障碍）", parameters: { type: "object", properties: {} } } },
   { type: "function", function: { name: "screen_tap", description: "按屏幕坐标点击（需要用户开启无障碍，坐标由 screen_read 返回）", parameters: { type: "object", properties: { x: { type: "integer" }, y: { type: "integer" } }, required: ["x","y"] } } },
   { type: "function", function: { name: "screen_back", description: "执行系统返回键（需要用户开启无障碍）", parameters: { type: "object", properties: {} } } },
-  { type: "function", function: { name: "open_accessibility", description: "打开系统无障碍设置，让用户自己授权屏幕读取/点击", parameters: { type: "object", properties: {} } } }
+  { type: "function", function: { name: "open_accessibility", description: "打开系统无障碍设置，让用户自己授权屏幕读取/点击", parameters: { type: "object", properties: {} } } },
+  { type: "function", function: { name: "list_skills", description: "列出手机版内置和导入的技能", parameters: { type: "object", properties: {} } } },
+  { type: "function", function: { name: "use_skill", description: "切换当前技能；name 传技能名称或 id", parameters: { type: "object", properties: { name: { type: "string" } }, required: ["name"] } } }
 ];
 const TOOL_NAMES = TOOL_DEFS.map(t => t.function.name);
 
@@ -623,6 +663,17 @@ async function execTool(name, args) {
       case "screen_tap": { const r = a ? a.screenTap(Number(args.x) || 0, Number(args.y) || 0) : "无 Android 环境"; return { text: r, detail: args.x + "," + args.y }; }
       case "screen_back": { const r = a ? a.screenBack() : "无 Android 环境"; return { text: r, detail: "返回键" }; }
       case "open_accessibility": { const r = a ? a.openAccessibility() : "无 Android 环境"; return { text: r, detail: "无障碍设置" }; }
+      case "list_skills": {
+        const all = SKILLS.concat(settings.customSkills || []);
+        return { text: all.map(k => "- " + k.name + "（" + (k.group || "导入") + "）：" + (k.desc || "") + (settings.skillId === k.id ? " [当前]" : "")).join("\n"), detail: all.length + " 个技能" };
+      }
+      case "use_skill": {
+        const all = SKILLS.concat(settings.customSkills || []);
+        const hit = all.find(k => k.id === args.name || k.name === args.name);
+        if (!hit) return { text: "没有这个技能：" + args.name };
+        settings.skillId = hit.id; persist(); updateTop();
+        return { text: "已切换到技能：" + hit.name, detail: hit.name };
+      }
       default:
         if (name.startsWith("mcp__")) {
           try { return { text: await mcpCall(name, args), detail: (mcpFindCall(name) || {}).tool ? mcpFindCall(name).tool.name : name }; }
@@ -730,7 +781,7 @@ async function runCloud(userText) {
 function localSystem() {
   return `你是 agent_etc 手机本地版，运行在用户手机上。当前模式：${modeOf().name}（${modeOf().desc}）。回答简洁。
 需要工具时只输出一行 JSON：{"tool":"工具名","args":{...}}，不要解释。
-可用工具：open_url(url), list_files(), read_file(name), write_file(name,content), http_fetch(url), memory_save(text,importance), memory_search(query), ask_user(question,options), device_info(), screen_read(), screen_tap(x,y), screen_back()${mcpAllTools().length ? "，以及 MCP 工具 " + mcpAllTools().map(t => t.name).join("、") : ""}。
+可用工具：open_url(url), list_files(), read_file(name), write_file(name,content), http_fetch(url), memory_save(text,importance), memory_search(query), ask_user(question,options), device_info(), screen_read(), screen_tap(x,y), screen_back(), list_skills(), use_skill(name)${mcpAllTools().length ? "，以及 MCP 工具 " + mcpAllTools().map(t => t.name).join("、") : ""}。
 人机验证、验证码、支付必须让用户本人完成。${memContext(current ? current.title : "")}`;
 }
 function parseToolJson(text) {
@@ -810,20 +861,23 @@ function renderSettings() {
   } else if (currentTab === "local") {
     body.innerHTML = `<div class="section"><h2>本地 GGUF</h2><p class="desc">模型文件会复制到应用私有目录，完全离线推理。首次加载需要几十秒，0.5B–3B 模型在手机上比较稳。</p>
       <div class="kv"><span>当前模型</span><span>${esc(settings.localName || "未选择")}</span></div>
-      <div class="kv"><span>状态</span><span>${settings.localLoaded ? "已加载" : "未加载"}</span></div>
+      <div class="kv"><span>状态</span><span>${settings.localLoading ? "正在加载…" : (settings.localLoaded ? "已加载" : "未加载")}</span></div>
+      <div class="kv"><span>自动加载</span><span><input id="autoLocal" type="checkbox" ${settings.autoLoadLocal !== false ? "checked" : ""} style="width:auto"></span></div>
       <div class="kv"><span>信息</span><span>${esc(settings.localInfo || "—")}</span></div>
-      <div class="row" style="margin:12px 0"><button class="btn" id="pickModel">选择 .gguf</button><button class="btn primary" id="loadModel" ${settings.localPath ? "" : "disabled"}>加载模型</button></div>
+      ${settings.localError ? `<div class="note warn">上次加载失败：${esc(settings.localError)}</div>` : ""}
+      <div class="row" style="margin:12px 0"><button class="btn" id="pickModel">选择 .gguf</button><button class="btn primary" id="loadModel" ${settings.localPath ? "" : "disabled"}>${settings.localLoading ? "加载中…" : "加载/重载"}</button></div>
       <div class="row">${field("上下文", "setCtx", settings.localCtx, "number")}${field("线程", "setThreads", settings.localThreads, "number")}</div>
       <button class="btn ghost" id="unloadModel">卸载模型</button>
-      <div class="note warn">本地模式速度取决于手机 CPU；如果提示上下文不足，把上下文调小或清空会话。人机验证、支付仍需你本人操作。</div></div>`;
+      <div class="note">启动和切回前台会自动检测并重新加载上次使用的模型；如手机内存紧张会自动失败，可在上方关闭自动加载。人机验证、支付仍需你本人操作。</div></div>`;
   } else if (currentTab === "skills") {
     const active = activeSkill();
     const custom = settings.customSkills || [];
-    body.innerHTML = `<div class="section"><h2>技能</h2><p class="desc">技能会写进系统提示，决定它做事的方法。内置技能开箱可用，也可以导入电脑版的 SKILL.md。</p>
-      <div id="skillList">${SKILLS.map(k => `<div class="memitem"><button data-use-skill="${k.id}">${settings.skillId === k.id ? "已启用" : "启用"}</button><div class="mt">${esc(k.name)}</div><div class="mm"><span>${esc(k.desc)}</span></div></div>`).join("")}${custom.map(k => `<div class="memitem"><button data-del-skill="${k.id}">删除</button><div class="mt">${esc(k.name)}</div><div class="mm"><span>导入的技能</span><button data-use-skill="${k.id}" style="float:none;margin-left:auto">${settings.skillId === k.id ? "已启用" : "启用"}</button></div></div>`).join("")}</div>
+    body.innerHTML = `<div class="section"><h2>技能</h2><p class="desc">内置技能共 ${SKILLS.length} 个，覆盖办公、调研、写作、开发、工具、学习和生活；也可以导入电脑版的 SKILL.md。</p>
       <div class="kv"><span>当前技能</span><span>${esc(active.name)}</span></div>
+      <div class="field"><label>搜索技能</label><input id="skillSearch" value="${esc(skillQuery)}" placeholder="输入名称或用途，例如 表格 / 排错 / 翻译"></div>
+      <div id="skillList">${SKILLS.map(k => `<div class="memitem" data-skill-name="${esc((k.name + " " + k.desc + " " + k.group).toLowerCase())}"><button data-use-skill="${k.id}">${settings.skillId === k.id ? "已启用" : "启用"}</button><div class="mt">${esc(k.name)} <small style="color:#6f8d7a">${esc(k.group)}</small></div><div class="mm"><span>${esc(k.desc)}</span></div></div>`).join("")}${custom.map(k => `<div class="memitem" data-skill-name="${esc((k.name + " 导入").toLowerCase())}"><button data-del-skill="${k.id}">删除</button><div class="mt">${esc(k.name)}</div><div class="mm"><span>导入的技能</span><button data-use-skill="${k.id}" style="float:none;margin-left:auto">${settings.skillId === k.id ? "已启用" : "启用"}</button></div></div>`).join("")}</div>
       <button class="btn primary" id="importSkill" style="width:100%;margin-top:10px">导入 .md / SKILL.md</button>
-      <div class="note">导入的文本只存本机；技能不会自动获得新权限，工具权限仍由你在系统里授予。</div></div>`;
+      <div class="note">技能只是做事方法的提示，不会自动获得新权限；工具权限仍由你在系统里授予。</div></div>`;
   } else if (currentTab === "plugins") {
     body.innerHTML = `<div class="section"><h2>插件 · MCP</h2><p class="desc">连接远程 HTTPS MCP 服务，工具会直接出现在 Agent 的工具列表里。手机版不能运行 npx 本地插件；本地插件请在电脑端安装。</p>
       ${field("MCP 地址（HTTPS）", "mcpUrl", settings.mcpUrl, "url", "https://example.com/mcp")}
@@ -860,7 +914,7 @@ function renderSettings() {
       <div class="note">目录权限由系统文件选择器授予，App 只能访问你选中的文件夹；模型文件也是同样方式导入。</div>
       <div class="note">云端模型可以读网页、打开浏览器、分享文本；不能控制手机其他 App 的界面。需要屏幕操作要单独开无障碍服务，本版没有默认开启。</div></div>`;
   } else if (currentTab === "about") {
-    body.innerHTML = `<div class="section"><h2>关于</h2><div class="kv"><span>版本</span><span>1.6.1</span></div><div class="kv"><span>作者</span><span>ETC</span></div><div class="kv"><span>签名</span><span>ETC Code Signing</span></div><div class="kv"><span>依赖</span><span>无电脑端依赖</span></div>
+    body.innerHTML = `<div class="section"><h2>关于</h2><div class="kv"><span>版本</span><span>1.6.2</span></div><div class="kv"><span>作者</span><span>ETC</span></div><div class="kv"><span>签名</span><span>ETC Code Signing</span></div><div class="kv"><span>依赖</span><span>无电脑端依赖</span></div>
       <div class="row" style="margin-top:14px"><button class="btn" id="checkUpdate">检查更新</button><button class="btn" id="openRepo">打开仓库</button></div>
       <div class="statusline" id="updateInfo">点检查更新读取 GitHub Release</div>
       <div class="note">云端 API 由你自己填写并承担费用；本地 GGUF 完全离线，数据不出手机。</div></div>`;
@@ -879,9 +933,15 @@ function bindSettings() {
   bind("pickModel", "onclick", () => { if (android()) android().pickModel("pick"); else toast("不在 Android 环境"); });
   bind("pickModel2", "onclick", () => { if (android()) android().pickModel("pick"); else toast("不在 Android 环境"); });
   bind("loadModel", "onclick", () => { settings.localCtx = Number($("#setCtx").value) || 2048; settings.localThreads = Number($("#setThreads").value) || 4; persist(); loadLocal(); });
+  bind("autoLocal", "onchange", e => { settings.autoLoadLocal = !!e.target.checked; persist(); if (settings.autoLoadLocal && settings.localPath) setTimeout(maybeAutoLoadLocal, 200); });
   bind("unloadModel", "onclick", () => { if (android()) android().unloadLocal(); settings.localLoaded = false; persist(); updateTop(); renderSettings(); toast("已卸载"); });
   bind("memAdd", "onclick", () => { const t = $("#memText").value; const imp = Number($("#memImp").value); if (memSave(t, imp)) { toast("已记住"); renderSettings(); } });
   bind("memSearch", "onclick", () => { const q = $("#memQuery").value; const hit = memSearch(q, 10); $("#memList").innerHTML = hit.map(m => `<div class="memitem"><button data-forget="${m.id}">忘记</button><div class="mt">${esc(m.text)}</div><div class="mm"><span>重要度 ${m.importance}/5</span><span>强度 ${memStrength(m).toFixed(2)}</span><span>回想 ${m.recallCount || 0} 次</span></div></div>`).join("") || `<div class="note">没有找到</div>`; bindForgets(); });
+  bind("skillSearch", "oninput", e => {
+    const q = String(e.target.value || "").trim().toLowerCase();
+    skillQuery = e.target.value || "";
+    document.querySelectorAll("#skillList [data-skill-name]").forEach(el => { el.style.display = (!q || el.dataset.skillName.includes(q)) ? "" : "none"; });
+  });
   document.querySelectorAll("[data-use-skill]").forEach(b => b.onclick = () => { settings.skillId = b.dataset.useSkill; persist(); updateTop(); renderSettings(); toast("已启用技能"); });
   document.querySelectorAll("[data-del-skill]").forEach(b => b.onclick = () => { settings.customSkills = (settings.customSkills || []).filter(x => x.id !== b.dataset.delSkill); if (settings.skillId === b.dataset.delSkill) settings.skillId = "auto"; persist(); renderSettings(); });
   bind("importSkill", "onclick", () => pickText("skill"));
@@ -953,6 +1013,11 @@ if (android()) {
   } catch (e) {}
 }
 renderSessions(); renderChat(); updateTop();
+window.__onResume = function () {
+  if (settings.autoLoadLocal !== false && settings.localPath && !settings.localLoading) {
+    try { if (!android().localReady || !android().localReady()) maybeAutoLoadLocal(); } catch (e) {}
+  }
+};
 setTimeout(maybeAutoLoadLocal, 700);
 </script>
 </body>

@@ -280,6 +280,26 @@ public class NativeBridge {
     }
 
     @JavascriptInterface
+    public void rememberModel(String path, String name) {
+        try {
+            activity.getSharedPreferences("agent_etc", Context.MODE_PRIVATE).edit()
+                    .putString("lastModelPath", path == null ? "" : path)
+                    .putString("lastModelName", name == null ? "" : name).apply();
+        } catch (Throwable ignored) {}
+    }
+
+    @JavascriptInterface
+    public String lastModel() {
+        try {
+            SharedPreferences p = activity.getSharedPreferences("agent_etc", Context.MODE_PRIVATE);
+            JSONObject o = new JSONObject();
+            o.put("path", p.getString("lastModelPath", ""));
+            o.put("name", p.getString("lastModelName", ""));
+            return o.toString();
+        } catch (Throwable e) { return "{}"; }
+    }
+
+    @JavascriptInterface
     public boolean localReady() {
         try { return LlamaBridge.ready(); } catch (Throwable e) { return false; }
     }
@@ -650,5 +670,5 @@ public class NativeBridge {
     }
 
     @JavascriptInterface
-    public String appVersion() { return "1.6.1"; }
+    public String appVersion() { return "1.6.2"; }
 }

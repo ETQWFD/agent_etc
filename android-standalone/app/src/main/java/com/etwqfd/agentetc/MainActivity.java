@@ -50,6 +50,16 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        if (web != null) {
+            web.post(() -> {
+                try { web.evaluateJavascript("window.__onResume&&window.__onResume()", null); } catch (Throwable ignored) {}
+            });
+        }
+    }
+
+    @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (bridge != null) bridge.onActivityResult(requestCode, resultCode, data);
