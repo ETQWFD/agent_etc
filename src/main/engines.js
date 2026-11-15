@@ -87,6 +87,10 @@ function findOnPath(name) {
 function candidates(cfg, ctx) {
   const out = [];
   if (cfg?.localModel?.runtimePath) out.push(cfg.localModel.runtimePath);
+  if (process.resourcesPath) {
+    out.push(path.join(process.resourcesPath, 'engines', 'llama-win', EXE));
+    out.push(path.join(process.resourcesPath, 'engines', 'llama.cpp', EXE));
+  }
   for (const root of [ctx.appRoot, ctx.userDataDir]) {
     if (!root) continue;
     out.push(path.join(root, 'engines', 'llama.cpp', EXE));

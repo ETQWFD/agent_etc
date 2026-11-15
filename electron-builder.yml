@@ -1,6 +1,7 @@
 appId: com.agentetc.app
 productName: agent_etc
 copyright: Copyright © 2026 ETC
+afterPack: scripts/after-pack.js
 directories:
   output: dist
   buildResources: build
@@ -10,6 +11,11 @@ files:
   - plugins/**/*
   - skills/**/*
 asar: true
+extraResources:
+  - from: vendor/llama/win
+    to: engines/llama-win
+    filter:
+      - "**/*"
 compression: normal
 win:
   target:
@@ -21,6 +27,7 @@ win:
         - x64
   icon: build/icon.ico
   requestedExecutionLevel: asInvoker
+  signAndEditExecutable: false
   artifactName: agent_etc-${version}-${arch}.${ext}
 nsis:
   oneClick: false

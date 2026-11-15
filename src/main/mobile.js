@@ -32,11 +32,12 @@ function lanAddresses() {
 }
 
 class MobileServer {
-  constructor({ getState, chat, stop, respondApproval, staticDir }) {
+  constructor({ getState, chat, stop, respondApproval, respondChoice, staticDir }) {
     this.getState = getState;
     this.chat = chat;
     this.stop = stop;
     this.respondApproval = respondApproval;
+    this.respondChoice = respondChoice;
     this.staticDir = staticDir;
     this.server = null;
     this.port = 0;
@@ -101,6 +102,13 @@ class MobileServer {
 
   broadcastApproval(id, req) {
     const payload = JSON.stringify({ sessionId: '', event: { type: 'approval', id, req } });
+    for (const c of this.clients) {
+      try { c.res.write(`data: ${payload}\n\n`); } catch (_) { /* ignore */ }
+    }
+  }
+
+  broadcastChoice(id, req) {
+    const payload = JSON.stringify({ sessionId: '', event: { type: 'choice', id, req } });
     for (const c of this.clients) {
       try { c.res.write(`data: ${payload}\n\n`); } catch (_) { /* ignore */ }
     }
@@ -222,6 +230,12 @@ class MobileServer {
 
     if (pathname === '/api/stop' && req.method === 'POST') {
       try { this.stop(); this.sendJson(res, 200, { ok: true }); } catch (err) { this.sendJson(res, 500, { ok: false, error: err.message }); }
+      return;
+    }
+
+    if (pathname === '/api/choice' && req.method === 'POST') {
+      const body = await this.readBody(req);
+      try { this.respondChoice(body.id, body.answer || {}); this.sendJson(res, 200, { ok: true }); } catch (err) { this.sendJson(res, 500, { ok: false, error: err.message }); }
       return;
     }
 

@@ -150,12 +150,31 @@ async function respond(id, approved){
   toast(approved?'已允许':'已拒绝');
 }
 
+function showChoice(e){
+  const el=document.createElement('div'); el.className='approval';
+  el.innerHTML='<div class="t">需要你选择</div><div class="d"></div><div class="btns"></div>';
+  el.querySelector('.d').textContent = e.req.question;
+  const btns = el.querySelector('.btns');
+  (e.req.options||[]).forEach((opt)=>{
+    const b=document.createElement('button'); b.textContent=opt;
+    b.onclick=()=>respondChoice(e.id,opt,el);
+    btns.appendChild(b);
+  });
+  btns.style.flexDirection='column';
+  $('#main').appendChild(el); scrollBottom();
+}
+async function respondChoice(id,label,el){
+  await api('/api/choice',{method:'POST',body:JSON.stringify({id,answer:{selected:[label],selectedLabel:label}})});
+  el.remove(); toast('已选择：'+label);
+}
+
 function connectEvents(){
   const es = new EventSource('/api/events?t='+encodeURIComponent(token));
   es.onmessage = (ev)=>{
     let data; try{ data=JSON.parse(ev.data);}catch(_){return}
     if(!data.sessionId || data.sessionId!==state.current) {
       if(data.event?.type==='approval') showApproval(data.event);
+      if(data.event?.type==='choice') showChoice(data.event);
       return;
     }
     const e=data.event;

@@ -61,6 +61,7 @@ function defaultConfig() {
       shell: 'ask',
       write: 'ask',
       browserEval: 'ask',
+      desktop: 'ask',
       network: 'auto',
     },
     workspace: '',

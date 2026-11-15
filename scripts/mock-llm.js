@@ -29,8 +29,12 @@ const server = http.createServer((req, res) => {
     const base = { id: 'chatcmpl-mock', object: 'chat.completion.chunk', model: payload.model || 'mock-etc' };
 
     if (last.role === 'user') {
-      const args = String(userText).includes('命令') ? { command: 'echo hello from agent_etc' } : {};
-      const name = String(userText).includes('命令') ? 'shell_run' : 'fs_list';
+      let name = 'fs_list';
+      let args = {};
+      const t = String(userText);
+      if (t.includes('屏幕')) { name = 'screen_capture'; }
+      else if (t.includes('选择')) { name = 'ask_user'; args = { question: '你希望用哪种方式继续？', options: ['直接开始', '先看方案', '取消'] }; }
+      else if (t.includes('命令')) { name = 'shell_run'; args = { command: 'echo hello from agent_etc' }; }
       send({ ...base, choices: [{ index: 0, delta: { role: 'assistant', content: '' } }] });
       send({
         ...base,

@@ -477,6 +477,39 @@ function bindAgentEvents() {
     state.approvalId = id;
     showApproval(req);
   });
+  window.etc.onChoice(({ id, question, options, allowMultiple }) => {
+    showChoice(id, question, options || [], !!allowMultiple);
+  });
+}
+
+function showChoice(id, question, options, allowMultiple) {
+  const overlay = $('#overlay');
+  overlay.classList.add('show');
+  overlay.innerHTML = `
+    <div class="approve">
+      <div class="approve-title">需要你选择</div>
+      <div class="approve-detail">${esc(question)}</div>
+      <div class="choice-list">
+        ${options.map((o, i) => `<button class="btn choice-item" data-i="${i}">${esc(o)}</button>`).join('')}
+      </div>
+      ${allowMultiple ? '<div class="approve-actions"><button class="btn primary" data-act="ok">确定</button></div>' : ''}
+    </div>`;
+  const selected = new Set();
+  const done = (answer) => {
+    overlay.classList.remove('show');
+    overlay.innerHTML = '';
+    etc.choice.respond(id, answer);
+  };
+  overlay.querySelectorAll('.choice-item').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const label = options[Number(btn.dataset.i)];
+      if (!allowMultiple) return done({ selected: [label], selectedLabel: label });
+      btn.classList.toggle('active');
+      if (selected.has(label)) selected.delete(label); else selected.add(label);
+    });
+  });
+  const okBtn = overlay.querySelector('[data-act="ok"]');
+  if (okBtn) okBtn.addEventListener('click', () => done({ selected: [...selected], selectedLabel: [...selected].join('、') || '未选择' }));
 }
 
 function briefArgs(args) {
@@ -512,7 +545,7 @@ function showApproval(req) {
 }
 
 function kindLabel(kind) {
-  return { shell: '执行命令', write: '写文件', browser: '浏览器操作', browserEval: '页面脚本', network: '网络请求' }[kind] || kind || '操作';
+  return { shell: '执行命令', write: '写文件', browser: '浏览器操作', browserEval: '页面脚本', desktop: '桌面控制', network: '网络请求' }[kind] || kind || '操作';
 }
 
 /* ---------------- status ---------------- */
@@ -975,6 +1008,7 @@ function renderPermissions(panel) {
     ['write', '写入文件', '创建、覆盖文件'],
     ['network', '访问网络', '抓取网页与接口'],
     ['browserEval', '页面脚本', '在网页里执行 JavaScript'],
+        ['desktop', '桌面控制', '截屏、点击鼠标、键盘输入'],
   ];
   panel.innerHTML = `
     <h3>权限</h3>
@@ -1081,7 +1115,7 @@ function renderAbout(panel) {
   panel.innerHTML = `
     <h3>关于 agent_etc</h3>
     <div class="card">
-      <div class="list-line"><div class="grow"><div class="t">版本</div><div class="d">${esc(info.version || '1.1.0')}</div></div><span class="badge ok">1.1.0</span></div>
+      <div class="list-line"><div class="grow"><div class="t">版本</div><div class="d">${esc(info.version || '1.1.0')}</div></div><span class="badge ok">${esc(info.version || "1.2.0")}</span></div>
       <div class="list-line"><div class="grow"><div class="t">作者</div><div class="d">ETC</div></div></div>
       <div class="list-line"><div class="grow"><div class="t">运行平台</div><div class="d">${esc(info.platform || '')}</div></div></div>
       <div class="list-line"><div class="grow"><div class="t">用户数据</div><div class="d" style="word-break:break-all">${esc(info.userData || '')}</div></div></div>

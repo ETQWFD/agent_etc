@@ -81,6 +81,10 @@ contextBridge.exposeInMainWorld('etc', {
   approval: {
     respond: (id, approved) => ipcRenderer.invoke('approval:respond', { id, approved }),
   },
+  choice: {
+    respond: (id, answer) => ipcRenderer.invoke('choice:respond', { id, answer }),
+  },
   onAgentEvent: on('agent:event'),
   onApproval: on('agent:approval'),
+  onChoice: on('agent:choice'),
 });

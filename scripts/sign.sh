@@ -7,7 +7,7 @@ PASS="${ETC_PFX_PASS:-$(cat certs/PASSWORD.txt 2>/dev/null || echo ETC2026-agent
 [ -f certs/ETC-CodeSigning.pfx ] || { echo "缺少 certs/ETC-CodeSigning.pfx，请先运行 scripts/make_cert.sh"; exit 1; }
 [ -d dist ] || { echo "缺少 dist 目录，请先构建"; exit 1; }
 
-mapfile -t FILES < <(find dist -maxdepth 3 -name '*.exe' -type f ! -name '*signed*' | sort)
+mapfile -t FILES < <(find dist -maxdepth 1 -name '*.exe' -type f ! -name '*signed*' | sort)
 if [ ${#FILES[@]} -eq 0 ]; then echo "没有找到 exe"; exit 0; fi
 
 for f in "${FILES[@]}"; do
@@ -15,7 +15,7 @@ for f in "${FILES[@]}"; do
   out="${f%.exe}.signed.exe"
   if osslsigncode sign \
       -pkcs12 certs/ETC-CodeSigning.pfx -pass "$PASS" \
-      -n "agent_etc" -i "https://github.com/agent-etc/agent_etc" \
+      -n "agent_etc" -i "https://github.com/ETQWFD/agent_etc" \
       -in "$f" -out "$out" >/dev/null 2>&1; then
     mv "$out" "$f"
     echo "  完成"
@@ -25,7 +25,7 @@ for f in "${FILES[@]}"; do
 done
 
 echo "全部处理完成。验证："
-find dist -maxdepth 3 -name '*.exe' -type f | while read -r f; do
+find dist -maxdepth 1 -name '*.exe' -type f | while read -r f; do
   printf '%-60s ' "$f"
   osslsigncode verify "$f" 2>&1 | grep -E "Subject:|Signature verification:" | tr '\n' ' ' || true
   echo

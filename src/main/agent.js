@@ -6,19 +6,21 @@ const path = require('path');
 const { chat } = require('./providers');
 const { ToolRegistry, registerCoreTools } = require('./tools');
 const { BrowserManager, registerBrowserTools } = require('./tools/browser');
+const { registerDesktopTools } = require('./tools/desktop');
 const { SkillStore } = require('./skills');
 
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp']);
 const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.bmp': 'image/bmp' };
 
 class Agent {
-  constructor({ config, sessions, pluginHost, localModel, emit, requestApproval, appRoot, userDataDir }) {
+  constructor({ config, sessions, pluginHost, localModel, emit, requestApproval, askUser, appRoot, userDataDir }) {
     this.config = config;
     this.sessions = sessions;
     this.pluginHost = pluginHost;
     this.localModel = localModel;
     this.emit = emit;
     this.requestApproval = requestApproval;
+    this.askUser = askUser;
     this.appRoot = appRoot;
     this.userDataDir = userDataDir;
     this.skills = new SkillStore({
@@ -32,6 +34,7 @@ class Agent {
     this.browser = new BrowserManager({ getConfig: () => this.config.get() });
     registerCoreTools(this.registry, { getConfig: () => this.config.get() });
     registerBrowserTools(this.registry, this.browser, () => this.config.get().workspace);
+    registerDesktopTools(this.registry, { getWorkspace: () => this.config.get().workspace });
     this.syncPluginTools();
   }
 
@@ -88,6 +91,9 @@ class Agent {
       '3. 写文件、执行命令、点击页面这类有副作用的操作，会有用户确认弹窗，被拒绝就换方案而不是硬闯。',
       '4. 用户说“看看/查一下”时，优先用浏览器读真实页面，而不是凭记忆回答。',
       '5. 最终回复用 Markdown，给出做了什么、结果在哪（绝对路径或链接）、下一步建议。',
+      '6. 需要用户拍板时调用 ask_user 弹选项，不要替用户猜；用户拒绝的操作要换方案。',
+      '7. 看桌面用 screen_capture，确认坐标后再 screen_click；找文件用 fs_search / fs_drives。',
+      '8. 遇到人机验证 / 验证码 / CAPTCHA：立即停止自动操作，说明需要用户本人完成，绝不尝试绕过。',
       '',
       cfg.systemExtra ? `# 附加设定\n${cfg.systemExtra}` : '',
       skills ? `# 已启用的技能\n${skills}` : '',
@@ -172,6 +178,8 @@ class Agent {
     send({ type: 'session', session: this.publicSession(session) });
 
     const tools = this.registry.schemaForModel();
+    const visionNotes = [];
+    const visionOk = supportsVision(provider);
     const system = { role: 'system', content: this.buildSystemPrompt() };
     let step = 0;
     const maxSteps = Math.max(4, Number(this.config.get().maxSteps) || 24);
@@ -181,7 +189,7 @@ class Agent {
         step += 1;
         if (signal.aborted) throw new Error('已停止');
         send({ type: 'step', step, maxSteps });
-        const history = [system, ...session.messages.map(toProviderMessage)];
+        const history = [system, ...session.messages.map(toProviderMessage), ...visionNotes];
         const res = await chat({
           provider,
           messages: history,
@@ -224,19 +232,31 @@ class Agent {
           if (parseError) {
             outcome = { ok: false, error: parseError };
           } else {
-            outcome = await this.registry.run(call.name, args, { approve: (req) => this.approve(req), emit: send });
+            outcome = await this.registry.run(call.name, args, {
+              approve: (req) => this.approve(req),
+              emit: send,
+              ask: (req) => (this.askUser ? this.askUser(req) : { cancelled: true, note: '当前环境不支持弹窗' }),
+            });
+          }
+          const stored = JSON.parse(JSON.stringify(outcome));
+          if (stored.result && stored.result.imageDataUrl) {
+            delete stored.result.imageDataUrl;
+            stored.result.note = `${stored.result.note || ''}（图片数据未写入会话，文件见 ${stored.result.path || ''}）`;
           }
           const toolMessage = {
             role: 'tool',
             toolCallId: call.id,
             name: call.name,
-            content: JSON.stringify(outcome.ok ? outcome.result : { error: outcome.error }).slice(0, 60000),
+            content: JSON.stringify(outcome.ok ? stored.result : { error: stored.error }).slice(0, 60000),
             ts: Date.now(),
-            display: outcome,
+            display: stored,
           };
           session.messages.push(toolMessage);
           this.sessions.save(session);
           send({ type: 'tool-result', id: call.id, name: call.name, outcome });
+          if (visionOk && outcome.ok && outcome.result && outcome.result.imageDataUrl) {
+            visionNotes.push(imageMessage(outcome.result.imageDataUrl, provider.type, outcome.result.path || ''));
+          }
         }
       }
       send({ type: 'done', steps: step, truncated: true });
@@ -288,6 +308,28 @@ function toProviderMessage(m) {
   if (m.role === 'tool') return { role: 'tool', toolCallId: m.toolCallId, content: m.content };
   if (m.role === 'assistant' && m.toolCalls) return { role: 'assistant', content: m.content || '', toolCalls: m.toolCalls };
   return { role: m.role, content: m.content };
+}
+
+
+function supportsVision(provider) {
+  if (!provider) return false;
+  if (provider.type === 'anthropic') return true;
+  return /gpt-4o|gpt-4\.1|vision|vl|claude|gemini|glm-4v|qwen-vl|qwen2\.5-vl/i.test(String(provider.model || ''));
+}
+
+function imageMessage(dataUrl, providerType, filePath) {
+  const cap = `（系统）这是工具 screen_capture 返回的屏幕截图${filePath ? `，文件在 ${filePath}` : ''}。请据此确认界面与坐标。`;
+  if (providerType === 'anthropic') {
+    const m = /^data:(.*?);base64,(.*)$/.exec(dataUrl);
+    return { role: 'user', content: [
+      { type: 'text', text: cap },
+      { type: 'image', source: { type: 'base64', media_type: (m && m[1]) || 'image/png', data: (m && m[2]) || '' } },
+    ] };
+  }
+  return { role: 'user', content: [
+    { type: 'text', text: cap },
+    { type: 'image_url', image_url: { url: dataUrl } },
+  ] };
 }
 
 module.exports = { Agent };

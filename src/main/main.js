@@ -34,6 +34,7 @@ let localModel = null;
 let agent = null;
 let mobile = null;
 const approvals = new Map();
+const choices = new Map();
 
 function createWindow() {
   win = new BrowserWindow({
@@ -98,6 +99,18 @@ function initServices() {
       send('agent:event', { sessionId, event });
       mobile?.broadcast(sessionId, event);
     },
+    askUser: (req) => new Promise((resolve) => {
+      const id = crypto.randomUUID();
+      choices.set(id, resolve);
+      send('agent:choice', { id, ...req });
+      mobile?.broadcastChoice(id, req);
+      setTimeout(() => {
+        if (choices.has(id)) {
+          choices.delete(id);
+          resolve({ cancelled: true, note: '用户没有在 2 分钟内选择' });
+        }
+      }, 120000);
+    }),
     requestApproval: (req) => new Promise((resolve) => {
       const id = crypto.randomUUID();
       approvals.set(id, resolve);
@@ -121,6 +134,13 @@ function initServices() {
       if (resolve) {
         approvals.delete(id);
         resolve(!!approved);
+      }
+    },
+    respondChoice: (id, answer) => {
+      const resolve = choices.get(id);
+      if (resolve) {
+        choices.delete(id);
+        resolve({ ...(answer || {}), ok: true });
       }
     },
   });
@@ -400,6 +420,15 @@ function registerIpc() {
     const target = p || config.get().workspace;
     const res = await shell.openPath(target);
     return res === '' ? { ok: true } : { ok: false, error: res };
+  });
+
+  ipcMain.handle('choice:respond', (_e, { id, answer }) => {
+    const resolve = choices.get(id);
+    if (resolve) {
+      choices.delete(id);
+      resolve({ ...(answer || {}), ok: true });
+    }
+    return true;
   });
 
   ipcMain.handle('approval:respond', (_e, { id, approved }) => {

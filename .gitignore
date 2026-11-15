@@ -6,3 +6,5 @@ certs/PASSWORD.txt
 certs/*.csr
 *.log
 .DS_Store
+
+vendor/
