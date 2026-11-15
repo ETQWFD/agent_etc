@@ -121,6 +121,8 @@ input, textarea, select { font-family: inherit; color: var(--text); }
   border: 1px solid rgba(127,224,195,0.18);
 }
 .mode-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+.mode-select { appearance: none; outline: none; cursor: pointer; padding-right: 9px; font-family: inherit; }
+.mode-select option { background: #15151a; color: #e8e8ee; }
 .crumb-title { font-size: 13.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 420px; }
 .top-right { display: flex; align-items: center; gap: 12px; -webkit-app-region: no-drag; }
 body.win .topbar { padding-right: 152px; }

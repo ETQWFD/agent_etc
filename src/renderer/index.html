@@ -35,7 +35,12 @@
   <main class="main">
     <header class="topbar">
       <div class="crumb">
-        <span class="mode-chip"><i class="mode-dot"></i>办公任务</span>
+        <select class="mode-chip mode-select" id="workMode" title="工作模式">
+          <option value="lean">精简模式</option>
+          <option value="fast">极速模式</option>
+          <option value="create">创造模式</option>
+          <option value="model">建模模式</option>
+        </select>
         <span class="crumb-title" id="sessionTitle">新任务</span>
       </div>
       <div class="top-right">

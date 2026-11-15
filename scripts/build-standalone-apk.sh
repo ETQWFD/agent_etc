@@ -48,6 +48,6 @@ cp "$SO" "$OUT/lib/arm64-v8a/libagentllama.so"
   --ks "$ROOT/certs/ETC-CodeSigning.pfx" --ks-type PKCS12 \
   --ks-pass pass:ETC2026-agent-etc --key-pass pass:ETC2026-agent-etc \
   --ks-key-alias "etc code signing" \
-  --out "$ROOT/dist/agent_etc-1.4.0-android.apk" "$OUT/aligned.apk"
-"$BT/apksigner" verify --print-certs "$ROOT/dist/agent_etc-1.4.0-android.apk" | head -4
-ls -lh "$ROOT/dist/agent_etc-1.4.0-android.apk"
+  --out "$ROOT/dist/agent_etc-1.5.0-android.apk" "$OUT/aligned.apk"
+"$BT/apksigner" verify --print-certs "$ROOT/dist/agent_etc-1.5.0-android.apk" | head -4
+ls -lh "$ROOT/dist/agent_etc-1.5.0-android.apk"

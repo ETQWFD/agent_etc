@@ -7,23 +7,23 @@ SetCompressorDictSize 64
 !include "LogicLib.nsh"
 
 !define APP_NAME "agent_etc"
-!define APP_VERSION "1.3.0"
+!define APP_VERSION "1.5.0"
 !define APP_PUBLISHER "ETC"
 !define APP_EXE "agent_etc.exe"
 !define APP_ID "agent_etc"
 
 Name "${APP_NAME}"
-OutFile "dist/agent_etc-1.3.0-x64.exe"
+OutFile "dist/agent_etc-1.5.0-x64.exe"
 InstallDir "$LOCALAPPDATA\Programs\agent_etc"
 InstallDirRegKey HKCU "Software\agent_etc" "InstallDir"
 RequestExecutionLevel user
 BrandingText "agent_etc · ETC"
 
-VIProductVersion "1.3.0.0"
+VIProductVersion "1.5.0.0"
 VIAddVersionKey /LANG=2052 "ProductName" "agent_etc"
-VIAddVersionKey /LANG=2052 "ProductVersion" "1.3.0"
+VIAddVersionKey /LANG=2052 "ProductVersion" "1.5.0"
 VIAddVersionKey /LANG=2052 "FileDescription" "agent_etc 安装程序"
-VIAddVersionKey /LANG=2052 "FileVersion" "1.3.0.0"
+VIAddVersionKey /LANG=2052 "FileVersion" "1.5.0.0"
 VIAddVersionKey /LANG=2052 "CompanyName" "ETC"
 VIAddVersionKey /LANG=2052 "LegalCopyright" "Copyright © 2026 ETC"
 

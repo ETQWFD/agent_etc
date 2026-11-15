@@ -2,7 +2,7 @@
 
 /**
  * 技能仓库：兼容两种主流格式
- * 1) 豆包 / 通用单文件：skills/xxx.md（可选 YAML front matter：name / description）
+ * 1) 通用单文件：skills/xxx.md（可选 YAML front matter：name / description）
  * 2) DeepSeek Harness / Claude 风格目录：skills/xxx/SKILL.md（带 front matter，目录内可放引用文件）
  *
  * 导入时统一拷到 userData/skills/imported/ 下，源文件不动。

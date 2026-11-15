@@ -1,6 +1,6 @@
 # agent_etc
 
-一个**可自改装的桌面 Agent 工作台**：像豆包「办公任务模式」那样拆解任务、调用工具、操作浏览器，但模型、插件、权限、骨架全部由你自己配置。所有会话与配置都保存在本机。
+一个**可自改装的桌面 Agent 工作台**：拆解任务、调用工具、操作浏览器，模型、插件、权限、骨架全部由你自己配置。所有会话与配置都保存在本机。
 
 ![主界面](docs/screenshot-main.png)
 
@@ -79,33 +79,42 @@ module.exports = {
 
 启动后其工具会自动并入 Agent 的工具列表（前缀 `mcp_<server>_`）。
 
-## 技能（豆包 / DeepSeek Harness 双格式）
+## 技能（通用 Markdown / DeepSeek Harness 双格式）
 
 技能是注入系统提示的 Markdown，用来固化流程与口径。**设置 → 技能** 支持两种来源：
 
-- 单文件 `xxx.md`（豆包 / 通用），可选 YAML front matter（`name`、`description`）；
+- 单文件 `xxx.md`（通用 Markdown），可选 YAML front matter（`name`、`description`）；
 - 目录 + `SKILL.md`（DeepSeek Harness / Claude 风格），目录里的引用文件会一起保留。
 
 可以「导入技能文件」「导入技能目录」「从 DeepSeek Harness 导入」（自动扫描 `~/.dsh/skills` 等），也支持 `.zip`。导入只复制到用户数据目录，不改原文件；每个技能可单独开关、打开编辑、删除。
 
-## Android 独立版（1.4.0）
+## 四个工作模式（电脑端与手机端一致）
 
-`agent_etc-1.4.0-android.apk` 是**真正不依赖电脑**的手机 App：Agent 循环、会话、记忆、工具和 llama.cpp 推理都在手机内，不需要电脑开着。
+- **精简模式**：少步骤、短回答，先给结论；
+- **极速模式**：最快出结果，不做多余展开；
+- **创造模式**：写方案、文案、网页与创意，直接给完整产出；
+- **建模模式**：结构建模、代码、表格与流程，复杂任务先列步骤。
+
+电脑端在顶栏切换，手机端在标题栏下方切换；切换会改变系统提示、温度和输出长度。
+
+## Android 独立版（1.5.0）
+
+`agent_etc-1.5.0-android.apk` 是**真正不依赖电脑**的手机 App：Agent 循环、会话、记忆、工具和 llama.cpp 推理都在手机内，不需要电脑开着。
 
 - **云端**：设置里填你自己的 OpenAI 兼容接口（DeepSeek / Kimi / OpenAI / Ollama / 自建），Key 只存本机；
 - **本地 GGUF**：从系统文件选择器导入 `.gguf`（建议 0.5B–3B Q4），复制到应用私有目录后离线推理；
-- **手机工具**：应用私有文件读写、打开浏览器、GET 网页、分享、剪贴板、记忆、弹窗询问；
-- **不预置任何豆包接口**，不调用豆包额度；云端费用由你自己的 API 承担，本地模式完全离线；
+- **手机工具**：工作目录文件读写（系统目录授权）、打开浏览器、GET 网页、分享、剪贴板、记忆、弹窗询问；
+- **不预置第三方接口**；云端费用由你自己的 API 承担，本地模式完全离线；
 - 人机验证/验证码/支付：检测到就让用户本人完成，不代过。
 
 构建：
 
 ```bash
 bash scripts/fetch-llama-src.sh          # 下载 b12405 源码到 android-standalone/llama.cpp
-bash scripts/build-standalone-apk.sh     # arm64-v8a，NDK r26d，输出 dist/agent_etc-1.4.0-android.apk
+bash scripts/build-standalone-apk.sh     # arm64-v8a，NDK r26d，输出 dist/agent_etc-1.5.0-android.apk
 ```
 
-> 1.3.0 的 25KB APK 是连接电脑的远程壳，已不是推荐用法；独立版请用 1.4.0。
+> 1.3.0 的 25KB APK 是连接电脑的远程壳，已不是推荐用法；独立版请用 1.5.0。
 
 ## 手机远程版（可选）
 

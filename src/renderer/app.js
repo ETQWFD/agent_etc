@@ -138,6 +138,7 @@ function renderTopbar() {
     ? { name: '本地 GGUF', model: cfg.localModel.modelPath ? cfg.localModel.modelPath.split(/[\\/]/).pop().replace(/\.gguf$/i, '') : '未选择模型' }
     : (cfg.providers.find((x) => x.id === cfg.activeProviderId) || cfg.providers[0] || { name: '未配置', model: '未配置' });
   $('#modelChip').textContent = `${p.name} · ${p.model || '默认'}`;
+  $('#workMode').value = cfg.workMode || 'lean';
   $('#sessionTitle').textContent = state.session?.title || '新任务';
   $('#workspacePath').textContent = cfg.workspace || '—';
 }
@@ -1008,7 +1009,7 @@ async function renderSkills(panel) {
   const list = await etc.skills.list();
   panel.innerHTML = `
     <h3>技能</h3>
-    <div class="desc">技能是被注入系统提示的 Markdown 说明。兼容两种格式：单文件 <code class="inline">xxx.md</code>（豆包/通用，可选 YAML front matter），以及目录里的 <code class="inline">SKILL.md</code>（DeepSeek Harness / Claude 风格）。导入会复制到用户数据目录，原文件不动。</div>
+    <div class="desc">技能是被注入系统提示的 Markdown 说明。兼容两种格式：单文件 <code class="inline">xxx.md</code>（通用 Markdown，可选 YAML front matter），以及目录里的 <code class="inline">SKILL.md</code>（DeepSeek Harness / Claude 风格）。导入会复制到用户数据目录，原文件不动。</div>
     <div class="row" style="margin-bottom:10px">
       <button class="btn sm" id="importSkillFile">导入技能文件</button>
       <button class="btn sm" id="importSkillFolder">导入技能目录</button>
@@ -1348,6 +1349,10 @@ function copyText(text) {
 function bindStatic() {
   $('#btnNew').addEventListener('click', newSession);
   $('#btnSettings').addEventListener('click', () => openSettings('providers'));
+  $('#workMode').addEventListener('change', async (e) => {
+    state.config.workMode = e.target.value;
+    await etc.config.patch({ workMode: e.target.value });
+  });
   $('#modelChip').addEventListener('click', () => openSettings('providers'));
   $('#btnOpenWorkspace').addEventListener('click', () => etc.app.openPath(state.config.workspace));
   $$('.side-btn').forEach((b) => b.addEventListener('click', () => {

@@ -5,7 +5,10 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.database.Cursor;
 import android.net.Uri;
+import android.provider.DocumentsContract;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -33,9 +36,19 @@ public class NativeBridge {
     private final WebView web;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private String pendingPickId = null;
+    private String pendingWorkspaceId = null;
     private static final int REQ_MODEL = 7001;
+    private static final int REQ_WORKSPACE = 7002;
+    private Uri workspaceUri = null;
 
-    public NativeBridge(Activity a, WebView w) { activity = a; web = w; }
+    public NativeBridge(Activity a, WebView w) {
+        activity = a;
+        web = w;
+        String saved = a.getSharedPreferences("agent_etc", Context.MODE_PRIVATE).getString("workspaceUri", "");
+        if (!saved.isEmpty()) {
+            try { workspaceUri = Uri.parse(saved); } catch (Exception ignored) {}
+        }
+    }
 
     private void js(final String code) {
         ui.post(() -> web.evaluateJavascript(code, null));
@@ -120,6 +133,18 @@ public class NativeBridge {
     }
 
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQ_WORKSPACE) {
+            final String id = pendingWorkspaceId == null ? "workspace" : pendingWorkspaceId;
+            pendingWorkspaceId = null;
+            if (resultCode == Activity.RESULT_OK && data != null && data.getData() != null) {
+                Uri uri = data.getData();
+                persistWorkspace(uri);
+                js("window.__workspacePicked(" + q(id) + "," + q(workspaceName()) + "," + q(uri.toString()) + "," + q("") + ")");
+            } else {
+                js("window.__workspacePicked(" + q(id) + "," + q("") + "," + q("") + "," + q("已取消") + ")");
+            }
+            return;
+        }
         if (requestCode != REQ_MODEL) return;
         final String id = pendingPickId == null ? "model" : pendingPickId;
         pendingPickId = null;
@@ -206,6 +231,142 @@ public class NativeBridge {
                 js("window.__localReply(" + q(id) + "," + q("") + "," + q(String.valueOf(e.getMessage())) + ")");
             }
         }).start();
+    }
+
+    // ---------- workspace (SAF directory) ----------
+    @JavascriptInterface
+    public void pickWorkspace(final String id) {
+        pendingWorkspaceId = id;
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        ui.post(() -> activity.startActivityForResult(i, REQ_WORKSPACE));
+    }
+
+    private boolean persistWorkspace(Uri uri) {
+        try {
+            activity.getContentResolver().takePersistableUriPermission(uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        } catch (Exception ignored) {}
+        workspaceUri = uri;
+        SharedPreferences.Editor e = activity.getSharedPreferences("agent_etc", Context.MODE_PRIVATE).edit();
+        e.putString("workspaceUri", uri.toString());
+        e.apply();
+        return true;
+    }
+
+    private Uri rootDocUri() {
+        if (workspaceUri == null) return null;
+        String id = DocumentsContract.getTreeDocumentId(workspaceUri);
+        return DocumentsContract.buildDocumentUriUsingTree(workspaceUri, id);
+    }
+
+    private String workspaceName() {
+        Uri root = rootDocUri();
+        if (root == null) return "";
+        try (Cursor c = activity.getContentResolver().query(root,
+                new String[]{DocumentsContract.Document.COLUMN_DISPLAY_NAME}, null, null, null)) {
+            if (c != null && c.moveToFirst()) return c.getString(0);
+        } catch (Exception ignored) {}
+        return "已选择目录";
+    }
+
+    private Uri findInWorkspace(String name) {
+        Uri root = rootDocUri();
+        if (root == null) return null;
+        String rootId = DocumentsContract.getTreeDocumentId(workspaceUri);
+        Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(workspaceUri, rootId);
+        try (Cursor c = activity.getContentResolver().query(children,
+                new String[]{DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME},
+                null, null, null)) {
+            if (c != null) while (c.moveToNext()) {
+                if (name.equals(c.getString(1))) {
+                    return DocumentsContract.buildDocumentUriUsingTree(workspaceUri, c.getString(0));
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    @JavascriptInterface
+    public String workspaceInfo() {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("ready", workspaceUri != null);
+            o.put("name", workspaceUri == null ? "" : workspaceName());
+            o.put("uri", workspaceUri == null ? "" : workspaceUri.toString());
+            return o.toString();
+        } catch (Exception e) { return "{\"ready\":false}"; }
+    }
+
+    @JavascriptInterface
+    public String wsList() {
+        try {
+            JSONArray arr = new JSONArray();
+            Uri root = rootDocUri();
+            if (root == null) return arr.toString();
+            String rootId = DocumentsContract.getTreeDocumentId(workspaceUri);
+            Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(workspaceUri, rootId);
+            try (Cursor c = activity.getContentResolver().query(children,
+                    new String[]{DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE, DocumentsContract.Document.COLUMN_SIZE},
+                    null, null, null)) {
+                if (c != null) while (c.moveToNext()) {
+                    JSONObject o = new JSONObject();
+                    o.put("name", c.getString(0));
+                    o.put("dir", DocumentsContract.Document.MIME_TYPE_DIR.equals(c.getString(1)));
+                    o.put("size", c.isNull(2) ? 0 : c.getLong(2));
+                    arr.put(o);
+                }
+            }
+            return arr.toString();
+        } catch (Exception e) { return "[]"; }
+    }
+
+    @JavascriptInterface
+    public String wsRead(String name) {
+        try {
+            Uri uri = findInWorkspace(safeName(name));
+            if (uri == null) return "工作目录中不存在：" + name;
+            StringBuilder sb = new StringBuilder();
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(
+                    activity.getContentResolver().openInputStream(uri), StandardCharsets.UTF_8))) {
+                String line; int total = 0;
+                while ((line = br.readLine()) != null) {
+                    sb.append(line).append('\n'); total += line.length();
+                    if (total > 2_000_000) return "文件过大，暂只支持读取 2MB 以内文本";
+                }
+            }
+            return sb.toString();
+        } catch (Exception e) { return "读取失败：" + e.getMessage(); }
+    }
+
+    @JavascriptInterface
+    public String wsWrite(String name, String content) {
+        try {
+            if (workspaceUri == null) return "还没有选择工作目录";
+            String safe = safeName(name);
+            Uri existing = findInWorkspace(safe);
+            OutputStream os;
+            if (existing != null) {
+                os = activity.getContentResolver().openOutputStream(existing, "wt");
+            } else {
+                Uri created = DocumentsContract.createDocument(activity.getContentResolver(),
+                        rootDocUri(), "text/plain", safe);
+                if (created == null) return "创建文件失败：" + safe;
+                os = activity.getContentResolver().openOutputStream(created, "wt");
+            }
+            if (os == null) return "无法写入：" + safe;
+            try (OutputStream out = os) { out.write(content.getBytes(StandardCharsets.UTF_8)); }
+            return "已写入工作目录：" + safe;
+        } catch (Exception e) { return "写入失败：" + e.getMessage(); }
+    }
+
+    @JavascriptInterface
+    public String wsDelete(String name) {
+        try {
+            Uri uri = findInWorkspace(safeName(name));
+            if (uri == null) return "工作目录中不存在：" + name;
+            return DocumentsContract.deleteDocument(activity.getContentResolver(), uri) ? "已删除：" + name : "删除失败：" + name;
+        } catch (Exception e) { return "删除失败：" + e.getMessage(); }
     }
 
     // ---------- app files ----------
@@ -321,5 +482,5 @@ public class NativeBridge {
     }
 
     @JavascriptInterface
-    public String appVersion() { return "1.4.0"; }
+    public String appVersion() { return "1.5.0"; }
 }

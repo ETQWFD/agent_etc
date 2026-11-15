@@ -65,6 +65,7 @@ function defaultConfig() {
       network: 'auto',
     },
     workspace: '',
+    workMode: 'lean',
     maxSteps: 24,
     systemExtra: DEFAULT_SYSTEM_EXTRA,
     qq: {

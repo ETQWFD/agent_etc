@@ -13,7 +13,7 @@
 - 新增「插件市场」：接 MCP 官方注册表（registry.modelcontextprotocol.io）与 npm。
 - 搜到带 npm 包的 MCP 服务可直接安装，注册成 Agent 工具（用 `npx -y <package>` 启动）。
 - 支持自定义 JSON 市场源；原生插件可从 GitHub zip 安装（自动找 `plugin.json`）。
-- 说明：豆包工作模式与 DeepSeek Harness 的官方插件市场没有公开安装 API，本市场不以“官方”名义伪装；若你有对方导出的 JSON 源地址，填到「自定义源」即可接入。
+- 说明：第三方与 DeepSeek Harness 的官方插件市场没有公开安装 API，本市场不以“官方”名义伪装；若你有对方导出的 JSON 源地址，填到「自定义源」即可接入。
 
 ## QQ 助手
 - 新增「QQ 助手」设置页：填 OneBot HTTP 地址与 access token，连上后私聊小号即可让 Agent 回复、调用工具干活。

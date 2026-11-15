@@ -11,6 +11,12 @@ const { registerMemoryTools } = require('./memory');
 const { SkillStore } = require('./skills');
 
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp']);
+const WORK_MODES = {
+  lean:   { name: '精简模式', temp: 0.3, maxTokens: 1200, hint: '回答尽量 3–6 行，先给结论；能一步做完就不要拆成多步。' },
+  fast:   { name: '极速模式', temp: 0.2, maxTokens: 900,  hint: '直接给最终结果，少解释、少确认；只有缺关键信息才追问。' },
+  create: { name: '创造模式', temp: 0.9, maxTokens: 4096, hint: '多给具体方案、结构和完整产出；写网页/文案时直接写出成品。' },
+  model:  { name: '建模模式', temp: 0.4, maxTokens: 4096, hint: '先明确对象、约束和输入，再给结构化模型、代码、表格或流程；复杂任务先列 3–5 步。' },
+};
 const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.bmp': 'image/bmp' };
 
 class Agent {
@@ -79,10 +85,12 @@ class Agent {
     const skills = this.loadSkills();
     const browserStatus = this.browser.ws ? '已连接' : '未启动（调用 browser_* 工具时自动启动）';
     const pluginList = this.pluginHost.tools().map((t) => t.name).join('、') || '无';
+    const workMode = WORK_MODES[cfg.workMode] || WORK_MODES.lean;
     return [
       '你是 agent_etc —— 一个可以自改装的桌面 Agent 工作台，运行在用户自己的电脑上。',
       '你的风格：先把任务拆成步骤，逐步执行，每步都告诉用户你在做什么；结论先行，简洁、准确，不啰嗦。',
       '',
+      `当前工作模式：${workMode.name} —— ${workMode.hint}`,
       `当前时间：${now}`,
       `工作区目录：${cfg.workspace}`,
       `浏览器：${browserStatus}`,
@@ -162,8 +170,10 @@ class Agent {
 
   async run({ session, text, attachments }) {
     this.syncPluginTools();
-    const provider = this.resolveProvider();
+    let provider = this.resolveProvider();
     if (!provider) throw new Error('没有可用的模型服务，请在设置里配置');
+    const workMode = WORK_MODES[this.config.get().workMode] || WORK_MODES.lean;
+    provider = Object.assign({}, provider, { temperature: workMode.temp, maxTokens: workMode.maxTokens });
     if (!provider.apiKey && provider.type === 'anthropic') throw new Error('请先在设置里填写 Anthropic API Key');
     if (provider.id !== 'local-gguf' && /api\.openai\.com|api\.anthropic\.com/.test(provider.baseUrl) && !provider.apiKey) {
       throw new Error('请先在「设置 → 模型服务」里填写 API Key');
