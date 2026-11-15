@@ -12,6 +12,14 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+
 public class MainActivity extends Activity {
     private WebView web;
     private NativeBridge bridge;
@@ -19,6 +27,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        installCrashLogger();
         Window w = getWindow();
         w.setStatusBarColor(Color.parseColor("#0b0b0d"));
         w.setNavigationBarColor(Color.parseColor("#0b0b0d"));
@@ -50,6 +59,24 @@ public class MainActivity extends Activity {
     public void onBackPressed() {
         if (web != null && web.canGoBack()) web.goBack();
         else super.onBackPressed();
+    }
+
+    private void installCrashLogger() {
+        final Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {
+            try {
+                File dir = new File(getFilesDir(), "state");
+                if (!dir.exists()) dir.mkdirs();
+                StringWriter sw = new StringWriter();
+                error.printStackTrace(new PrintWriter(sw));
+                String text = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(new Date())
+                        + "\n" + thread.getName() + "\n" + sw;
+                try (FileOutputStream fos = new FileOutputStream(new File(dir, "last-crash.txt"))) {
+                    fos.write(text.getBytes("UTF-8"));
+                }
+            } catch (Throwable ignored) {}
+            if (previous != null) previous.uncaughtException(thread, error);
+        });
     }
 
     public void toast(final String msg) {

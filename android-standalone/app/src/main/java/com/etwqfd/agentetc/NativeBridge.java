@@ -280,6 +280,11 @@ public class NativeBridge {
     }
 
     @JavascriptInterface
+    public boolean localReady() {
+        try { return LlamaBridge.ready(); } catch (Throwable e) { return false; }
+    }
+
+    @JavascriptInterface
     public void loadLocal(final String id, final String path, final int nCtx, final int threads) {
         new Thread(() -> {
             try {
@@ -415,7 +420,7 @@ public class NativeBridge {
                 }
             }
             return arr.toString();
-        } catch (Exception e) { return "[]"; }
+        } catch (Throwable e) { return "[]"; }
     }
 
     @JavascriptInterface
@@ -433,28 +438,49 @@ public class NativeBridge {
                 }
             }
             return sb.toString();
-        } catch (Exception e) { return "读取失败：" + e.getMessage(); }
+        } catch (Throwable e) { return "读取失败：" + (e.getMessage() == null ? e.toString() : e.getMessage()); }
     }
 
     @JavascriptInterface
     public String wsWrite(String name, String content) {
+        OutputStream os = null;
         try {
             if (workspaceUri == null) return "还没有选择工作目录";
             String safe = safeName(name);
+            String text = content == null ? "" : content;
+            Uri root = rootDocUri();
+            if (root == null) return "工作目录权限已失效，请重新选择目录";
             Uri existing = findInWorkspace(safe);
-            OutputStream os;
             if (existing != null) {
-                os = activity.getContentResolver().openOutputStream(existing, "wt");
+                try { os = activity.getContentResolver().openOutputStream(existing, "wt"); }
+                catch (Exception ignored) { os = activity.getContentResolver().openOutputStream(existing, "w"); }
             } else {
-                Uri created = DocumentsContract.createDocument(activity.getContentResolver(),
-                        rootDocUri(), "text/plain", safe);
+                String mime = mimeFor(safe);
+                Uri created = DocumentsContract.createDocument(activity.getContentResolver(), root, mime, safe);
                 if (created == null) return "创建文件失败：" + safe;
-                os = activity.getContentResolver().openOutputStream(created, "wt");
+                try { os = activity.getContentResolver().openOutputStream(created, "wt"); }
+                catch (Exception ignored) { os = activity.getContentResolver().openOutputStream(created, "w"); }
             }
             if (os == null) return "无法写入：" + safe;
-            try (OutputStream out = os) { out.write(content.getBytes(StandardCharsets.UTF_8)); }
-            return "已写入工作目录：" + safe;
-        } catch (Exception e) { return "写入失败：" + e.getMessage(); }
+            try (OutputStream out = os) { out.write(text.getBytes(StandardCharsets.UTF_8)); }
+            os = null;
+            return "已写入工作目录：" + safe + "（" + text.length() + " 字）";
+        } catch (Throwable e) {
+            return "写入失败：" + (e.getMessage() == null ? e.toString() : e.getMessage());
+        } finally {
+            if (os != null) try { os.close(); } catch (Exception ignored) {}
+        }
+    }
+
+    private String mimeFor(String name) {
+        String n = name == null ? "" : name.toLowerCase();
+        if (n.endsWith(".html") || n.endsWith(".htm")) return "text/html";
+        if (n.endsWith(".json")) return "application/json";
+        if (n.endsWith(".xml")) return "application/xml";
+        if (n.endsWith(".js") || n.endsWith(".ts")) return "text/plain";
+        if (n.endsWith(".css")) return "text/css";
+        if (n.endsWith(".md")) return "text/markdown";
+        return "text/plain";
     }
 
     @JavascriptInterface
@@ -464,6 +490,51 @@ public class NativeBridge {
             if (uri == null) return "工作目录中不存在：" + name;
             return DocumentsContract.deleteDocument(activity.getContentResolver(), uri) ? "已删除：" + name : "删除失败：" + name;
         } catch (Exception e) { return "删除失败：" + e.getMessage(); }
+    }
+
+    // ---------- persistent state (files, avoids WebView localStorage quota) ----------
+    private File stateDir() {
+        File d = new File(activity.getFilesDir(), "state");
+        if (!d.exists()) d.mkdirs();
+        return d;
+    }
+    private String stateKey(String key) {
+        String k = key == null ? "state" : key.replaceAll("[^A-Za-z0-9._-]", "_");
+        return k.isEmpty() ? "state" : k;
+    }
+
+    @JavascriptInterface
+    public String stateRead(String key) {
+        try {
+            File f = new File(stateDir(), stateKey(key) + ".json");
+            if (!f.exists() || f.length() == 0) return "";
+            if (f.length() > 24_000_000L) return "";
+            StringBuilder sb = new StringBuilder();
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = br.readLine()) != null) sb.append(line).append('\n');
+            }
+            return sb.toString();
+        } catch (Throwable e) { return ""; }
+    }
+
+    @JavascriptInterface
+    public void stateWrite(String key, String json) {
+        try {
+            File dir = stateDir();
+            File f = new File(dir, stateKey(key) + ".json");
+            File tmp = new File(dir, stateKey(key) + ".tmp");
+            try (FileOutputStream fos = new FileOutputStream(tmp)) {
+                fos.write((json == null ? "" : json).getBytes(StandardCharsets.UTF_8));
+            }
+            if (!tmp.renameTo(f)) {
+                try (FileOutputStream fos = new FileOutputStream(f)) {
+                    fos.write((json == null ? "" : json).getBytes(StandardCharsets.UTF_8));
+                }
+                //noinspection ResultOfMethodCallIgnored
+                tmp.delete();
+            }
+        } catch (Throwable ignored) {}
     }
 
     // ---------- app files ----------
@@ -579,5 +650,5 @@ public class NativeBridge {
     }
 
     @JavascriptInterface
-    public String appVersion() { return "1.6.0"; }
+    public String appVersion() { return "1.6.1"; }
 }
