@@ -42,6 +42,10 @@ contextBridge.exposeInMainWorld('etc', {
     list: () => ipcRenderer.invoke('skill:list'),
     toggle: (id, enabled) => ipcRenderer.invoke('skill:toggle', { id, enabled }),
     open: (id) => ipcRenderer.invoke('skill:open', id),
+    importFile: () => ipcRenderer.invoke('skill:import-file'),
+    importFolder: () => ipcRenderer.invoke('skill:import-folder'),
+    importHarness: () => ipcRenderer.invoke('skill:import-harness'),
+    remove: (id) => ipcRenderer.invoke('skill:remove', id),
   },
   browser: {
     status: () => ipcRenderer.invoke('browser:status'),
@@ -54,6 +58,17 @@ contextBridge.exposeInMainWorld('etc', {
     stop: () => ipcRenderer.invoke('localmodel:stop'),
     pickRuntime: () => ipcRenderer.invoke('localmodel:pick-runtime'),
     pickModel: () => ipcRenderer.invoke('localmodel:pick-model'),
+    installEngine: () => ipcRenderer.invoke('localmodel:install-engine'),
+    inspect: () => ipcRenderer.invoke('localmodel:inspect'),
+  },
+  mobile: {
+    status: () => ipcRenderer.invoke('mobile:status'),
+    start: () => ipcRenderer.invoke('mobile:start'),
+    stop: () => ipcRenderer.invoke('mobile:stop'),
+    save: (patch) => ipcRenderer.invoke('mobile:save', patch),
+  },
+  updates: {
+    check: () => ipcRenderer.invoke('app:check-update'),
   },
   dialog: {
     pickFiles: () => ipcRenderer.invoke('dialog:pick-files'),

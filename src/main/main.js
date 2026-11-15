@@ -12,6 +12,8 @@ const { SessionStore } = require('./sessions');
 const { PluginHost } = require('./plugins');
 const { LocalModelRunner } = require('./llamacpp');
 const { Agent } = require('./agent');
+const { MobileServer } = require('./mobile');
+const { checkUpdate } = require('./updates');
 
 const APP_ROOT = path.join(__dirname, '..', '..');
 const isDev = !app.isPackaged;
@@ -30,6 +32,7 @@ let sessions = null;
 let pluginHost = null;
 let localModel = null;
 let agent = null;
+let mobile = null;
 const approvals = new Map();
 
 function createWindow() {
@@ -79,7 +82,11 @@ function initServices() {
     getConfig: () => config.get(),
     onToolsChanged: () => { if (agent) agent.syncPluginTools(); },
   });
-  localModel = new LocalModelRunner({ getConfig: () => config.get() });
+  localModel = new LocalModelRunner({
+    getConfig: () => config.get(),
+    appRoot: APP_ROOT,
+    userDataDir: app.getPath('userData'),
+  });
   agent = new Agent({
     config,
     sessions,
@@ -87,11 +94,15 @@ function initServices() {
     localModel,
     appRoot: APP_ROOT,
     userDataDir: app.getPath('userData'),
-    emit: (sessionId, event) => send('agent:event', { sessionId, event }),
+    emit: (sessionId, event) => {
+      send('agent:event', { sessionId, event });
+      mobile?.broadcast(sessionId, event);
+    },
     requestApproval: (req) => new Promise((resolve) => {
       const id = crypto.randomUUID();
       approvals.set(id, resolve);
       send('agent:approval', { id, req });
+      mobile?.broadcastApproval(id, req);
       setTimeout(() => {
         if (approvals.has(id)) {
           approvals.delete(id);
@@ -100,7 +111,64 @@ function initServices() {
       }, 120000);
     }),
   });
+  mobile = new MobileServer({
+    staticDir: path.join(APP_ROOT, 'src', 'mobile'),
+    getState: () => mobileState(),
+    chat: (payload) => mobileChat(payload),
+    stop: () => agent.stop(),
+    respondApproval: (id, approved) => {
+      const resolve = approvals.get(id);
+      if (resolve) {
+        approvals.delete(id);
+        resolve(!!approved);
+      }
+    },
+  });
   pluginHost.reloadAll().catch((err) => console.error('[plugins] 初始化失败', err));
+  if (config.get().mobile?.enabled) {
+    mobile.start({ port: config.get().mobile.port, token: config.get().mobile.token })
+      .then((st) => {
+        if (st.token !== config.get().mobile.token) config.patch({ mobile: { token: st.token } });
+        console.log('[mobile] 已启动', st.port);
+      })
+      .catch((err) => console.error('[mobile] 启动失败', err.message));
+  }
+}
+
+function lastSession() {
+  const list = sessions.list();
+  if (!list.length) return null;
+  const id = config.get().ui?.lastSessionId;
+  const s = (id && sessions.get(id)) || sessions.get(list[0].id);
+  return s ? agent.publicSession(s) : null;
+}
+
+function mobileState() {
+  const cfg = config.get();
+  const provider = cfg.activeProviderId === 'local-gguf' ? localModel.provider() : config.getProvider(cfg.activeProviderId);
+  return {
+    version: app.getVersion(),
+    provider: provider ? { id: provider.id, name: provider.name, model: provider.model } : null,
+    sessions: sessions.list(),
+    session: lastSession(),
+    local: localModel.status(),
+    browser: agent.browser.status(),
+  };
+}
+
+async function mobileChat(payload) {
+  if (payload?.newSession) {
+    const s = sessions.create(payload.title || '手机任务');
+    return { sessionId: s.id, session: agent.publicSession(s) };
+  }
+  const text = String(payload?.text || '').trim();
+  if (!text) throw new Error('内容为空');
+  const s = sessions.get(payload.sessionId) || sessions.create(text.slice(0, 20));
+  config.patch({ ui: { lastSessionId: s.id } });
+  agent.run({ session: s, text, attachments: [] }).catch((err) => {
+    console.error('[mobile] 任务失败', err.message);
+  });
+  return { sessionId: s.id, session: agent.publicSession(s) };
 }
 
 function registerProtocol() {
@@ -166,6 +234,7 @@ function registerIpc() {
 
   ipcMain.handle('chat:send', async (_e, { sessionId, text, attachments }) => {
     const s = sessions.get(sessionId) || sessions.create(text?.slice(0, 20));
+    config.patch({ ui: { lastSessionId: s.id } });
     try {
       const result = await agent.run({ session: s, text, attachments: attachments || [] });
       return result;
@@ -187,10 +256,7 @@ function registerIpc() {
 
   ipcMain.handle('skill:list', () => agent.listSkills());
   ipcMain.handle('skill:toggle', (_e, { id, enabled }) => {
-    const cfg = config.get();
-    const disabled = new Set(cfg.skills?.disabled || []);
-    if (enabled) disabled.delete(id); else disabled.add(id);
-    config.patch({ skills: { disabled: [...disabled] } });
+    agent.skills.setEnabled(id, !!enabled);
     return agent.listSkills();
   });
   ipcMain.handle('skill:open', async (_e, id) => {
@@ -203,6 +269,34 @@ function registerIpc() {
     if (!skill) return false;
     const res = await shell.openPath(skill.path);
     return res === '';
+  });
+  ipcMain.handle('skill:import-file', async () => {
+    const picked = await dialog.showOpenDialog(win, {
+      title: '导入技能（可多选 .md / .zip）',
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: '技能', extensions: ['md', 'zip'] }, { name: '全部文件', extensions: ['*'] }],
+    });
+    if (picked.canceled || !picked.filePaths.length) return null;
+    const results = [];
+    for (const p of picked.filePaths) results.push(await agent.skills.importPath(p));
+    return { imported: results.reduce((n, r) => n + r.imported, 0), results, list: agent.listSkills() };
+  });
+  ipcMain.handle('skill:import-folder', async () => {
+    const picked = await dialog.showOpenDialog(win, {
+      title: '导入技能目录（含 SKILL.md，或目录内多个 .md）',
+      properties: ['openDirectory'],
+    });
+    if (picked.canceled || !picked.filePaths[0]) return null;
+    const r = await agent.skills.importPath(picked.filePaths[0]);
+    return { ...r, list: agent.listSkills() };
+  });
+  ipcMain.handle('skill:import-harness', async () => {
+    const r = await agent.skills.importFromHarness();
+    return { ...r, list: agent.listSkills() };
+  });
+  ipcMain.handle('skill:remove', async (_e, id) => {
+    const r = agent.skills.remove(id);
+    return { ...r, list: agent.listSkills() };
   });
 
   ipcMain.handle('browser:status', () => agent.browser.status());
@@ -248,6 +342,45 @@ function registerIpc() {
     if (picked.canceled || !picked.filePaths[0]) return null;
     config.patch({ localModel: { modelPath: picked.filePaths[0] } });
     return picked.filePaths[0];
+  });
+  ipcMain.handle('localmodel:install-engine', async () => {
+    try {
+      const r = await localModel.installEngine();
+      config.patch({ localModel: { runtimePath: r.path } });
+      return { ok: true, path: r.path, version: r.version, logs: r.logs, status: localModel.status() };
+    } catch (err) {
+      return { ok: false, error: err.message, status: localModel.status() };
+    }
+  });
+  ipcMain.handle('localmodel:inspect', () => localModel.status().engine);
+
+  ipcMain.handle('app:check-update', async () => {
+    try {
+      return await checkUpdate(app.getVersion());
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('mobile:status', () => mobile.status());
+  ipcMain.handle('mobile:start', async () => {
+    try {
+      const cfg = config.get().mobile || {};
+      const st = await mobile.start({ port: Number(cfg.port) || 8787, token: cfg.token || '' });
+      config.patch({ mobile: { enabled: true, token: st.token, port: st.port } });
+      return { ok: true, ...st };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+  ipcMain.handle('mobile:stop', async () => {
+    const st = await mobile.stop();
+    config.patch({ mobile: { enabled: false } });
+    return { ok: true, ...st };
+  });
+  ipcMain.handle('mobile:save', (_e, patch) => {
+    config.patch({ mobile: patch || {} });
+    return mobile.status();
   });
 
   ipcMain.handle('dialog:pick-files', async () => {
@@ -297,5 +430,6 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   try { localModel?.stop(); } catch (_) { /* ignore */ }
+  try { mobile?.stop(); } catch (_) { /* ignore */ }
   try { pluginHost?.shutdown(); } catch (_) { /* ignore */ }
 });

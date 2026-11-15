@@ -3,31 +3,42 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const engines = require('./engines');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * 本地 GGUF 模型运行时：驱动 llama.cpp 的 llama-server，
  * 起来之后就是标准 OpenAI 兼容接口，Agent 可直接使用。
+ *
+ * 注意：MNN 的 llm_demo 不是 llama-server，只接受 config.json；
+ * 选错时这里会给出明确提示，而不是让它把 --model 当配置路径。
  */
 class LocalModelRunner {
-  constructor({ getConfig }) {
+  constructor({ getConfig, appRoot, userDataDir }) {
     this.getConfig = getConfig;
+    this.appRoot = appRoot;
+    this.userDataDir = userDataDir;
     this.proc = null;
     this.logs = [];
     this.state = 'idle'; // idle | starting | running | error
     this.error = '';
   }
 
+  ctx() {
+    return { appRoot: this.appRoot, userDataDir: this.userDataDir };
+  }
+
   status() {
     const cfg = this.getConfig().localModel;
-    const runtimeOk = !!cfg.runtimePath && fs.existsSync(cfg.runtimePath);
+    const engine = engines.inspect(this.getConfig(), this.ctx());
     const modelOk = !!cfg.modelPath && fs.existsSync(cfg.modelPath);
     return {
       state: this.state,
       error: this.error,
       runtimePath: cfg.runtimePath,
-      runtimeOk,
+      runtimeOk: engine.ok,
+      engine,
       modelPath: cfg.modelPath,
       modelOk,
       port: cfg.port,
@@ -43,13 +54,34 @@ class LocalModelRunner {
     if (this.logs.length > 200) this.logs = this.logs.slice(-200);
   }
 
+  async installEngine() {
+    this.state = 'starting';
+    this.error = '';
+    const res = await engines.installRuntime(this.ctx(), (line) => this.log(line));
+    if (!res.ok) {
+      this.state = 'error';
+      this.error = res.error || '引擎安装失败';
+      throw new Error(this.error);
+    }
+    this.state = 'idle';
+    return res;
+  }
+
   async start() {
     if (this.state === 'running' && this.proc) return this.status();
     const cfg = this.getConfig().localModel;
-    if (!cfg.runtimePath || !fs.existsSync(cfg.runtimePath)) throw new Error('请先指定 llama.cpp 运行时（llama-server 可执行文件）');
+    const engine = engines.inspect(this.getConfig(), this.ctx());
+
+    if (!engine.ok) {
+      if (engine.kind === 'mnn-demo') {
+        throw new Error('你选的是 MNN 的 llm_demo.exe：它只接受 config.json 与 MNN 模型目录，不能加载 .gguf。请改用 llama.cpp 的 llama-server，或点「自动安装引擎」。');
+      }
+      throw new Error(engine.message || '未找到可用的 llama-server，请点「自动安装引擎」');
+    }
     if (!cfg.modelPath || !fs.existsSync(cfg.modelPath)) throw new Error('请先选择 .gguf 模型文件');
     if (this.proc) await this.stop();
 
+    const runtime = engine.path;
     const args = [
       '--model', cfg.modelPath,
       '--host', '127.0.0.1',
@@ -63,9 +95,10 @@ class LocalModelRunner {
     this.state = 'starting';
     this.error = '';
     this.logs = [];
-    this.log(`启动：${cfg.runtimePath} ${args.join(' ')}`);
+    this.log(`引擎：${engine.kind}${engine.version ? ` ${engine.version}` : ''}`);
+    this.log(`启动：${runtime} ${args.join(' ')}`);
 
-    this.proc = spawn(cfg.runtimePath, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    this.proc = spawn(runtime, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     this.proc.stdout.on('data', (d) => this.log(d.toString().trim().slice(0, 600)));
     this.proc.stderr.on('data', (d) => this.log(d.toString().trim().slice(0, 600)));
     this.proc.on('error', (err) => {

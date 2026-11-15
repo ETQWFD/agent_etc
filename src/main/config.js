@@ -73,6 +73,11 @@ function defaultConfig() {
     skills: {
       disabled: [],
     },
+    mobile: {
+      enabled: false,
+      port: 8787,
+      token: '',
+    },
     ui: {
       lastSessionId: '',
       showToolDetails: true,

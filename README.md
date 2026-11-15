@@ -17,15 +17,17 @@
 
 ## 快速开始
 
-1. 安装 `agent_etc-Setup-1.0.0.exe`，或直接运行 `agent_etc-1.0.0-portable.exe`。
+1. 安装 `agent_etc-1.1.0-x64.exe`，或直接运行 `agent_etc-1.1.0-portable.exe`。
 2. 打开 **设置 → 模型服务**，填 Base URL、API Key、模型名，点「测试连接」，再「设为当前」。
 3. 回到主界面，输入任务，例如「读取工作区里的 CSV，做一份分析并写成报告」。
 
 ### 本地 GGUF 模型
 
-1. 下载 llama.cpp 的 Windows 发行包（`llama-*-bin-win-x64.zip`），解压。
-2. **设置 → 本地 GGUF**：运行时选择 `llama-server.exe`，模型选择 `.gguf` 文件，按显存调整 GPU 层数。
+1. **设置 → 本地 GGUF**：点「自动安装引擎」，agent_etc 会从 llama.cpp 官方 Release 抓取当前 Windows 构建的 CPU 包（`llama-b*-bin-win-cpu-x64.zip`）并解压到用户数据目录；也可以手动选择已有的 `llama-server.exe`。
+2. 选择 `.gguf` 模型，按显存调整 GPU 层数（0 = 纯 CPU）。
 3. 点「启动模型服务」。就绪后会自动把当前模型切到本地，后续对话全部离线。
+
+> 选错引擎不会静默失败：如果指向 MNN 的 `llm_demo.exe`，界面会直接提示它只接受 `config.json`、不能加载 `.gguf`，并给出修复入口。
 
 > 纯 CPU 也能跑：GPU 层数填 0，上下文按内存调整（7B 模型建议 4096–8192）。
 
@@ -77,6 +79,24 @@ module.exports = {
 
 启动后其工具会自动并入 Agent 的工具列表（前缀 `mcp_<server>_`）。
 
+## 技能（豆包 / DeepSeek Harness 双格式）
+
+技能是注入系统提示的 Markdown，用来固化流程与口径。**设置 → 技能** 支持两种来源：
+
+- 单文件 `xxx.md`（豆包 / 通用），可选 YAML front matter（`name`、`description`）；
+- 目录 + `SKILL.md`（DeepSeek Harness / Claude 风格），目录里的引用文件会一起保留。
+
+可以「导入技能文件」「导入技能目录」「从 DeepSeek Harness 导入」（自动扫描 `~/.dsh/skills` 等），也支持 `.zip`。导入只复制到用户数据目录，不改原文件；每个技能可单独开关、打开编辑、删除。
+
+## 手机版
+
+**设置 → 手机版** 开启后，主进程会在局域网起一个带令牌的轻量服务：
+
+- 手机与电脑连同一 Wi-Fi，浏览器打开面板里显示的地址（`http://电脑IP:端口/?t=令牌`）；
+- 和桌面端共享同一份会话、工具、模型与权限；工具执行前会在手机上弹出确认；
+- 支持流式输出、工具卡、任务切换、新建任务；
+- 可在手机浏览器里「添加到主屏幕」，当独立 App 使用。
+
 ## 权限与安全
 
 - 默认所有有副作用的操作都弹窗确认；可在 **设置 → 权限与工作区** 改成自动。
@@ -95,7 +115,7 @@ npm run dist:win           # 交叉编译 Windows（Linux 上需要 wine）
 构建产物在 `dist/`：
 
 - `agent_etc-1.0.0-x64.exe`：NSIS 安装程序（可选安装目录、桌面快捷方式）
-- `agent_etc-1.0.0-portable.exe`：便携版单文件
+- `agent_etc-1.1.0-portable.exe`：便携版单文件
 - `win-unpacked/`：免安装目录版
 
 ## 代码签名

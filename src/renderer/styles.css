@@ -356,3 +356,4 @@ body.win .crumb { padding-left: 2px; }
   .sidebar { width: 240px; flex-basis: 240px; }
   .suggest { grid-template-columns: 1fr; }
 }
+.badge.warn { color: #ffd79a; border-color: rgba(255,196,92,.4); background: rgba(255,196,92,.08); }

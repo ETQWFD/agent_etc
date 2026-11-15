@@ -6,6 +6,7 @@ const path = require('path');
 const { chat } = require('./providers');
 const { ToolRegistry, registerCoreTools } = require('./tools');
 const { BrowserManager, registerBrowserTools } = require('./tools/browser');
+const { SkillStore } = require('./skills');
 
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp']);
 const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.bmp': 'image/bmp' };
@@ -20,6 +21,12 @@ class Agent {
     this.requestApproval = requestApproval;
     this.appRoot = appRoot;
     this.userDataDir = userDataDir;
+    this.skills = new SkillStore({
+      appRoot,
+      userDataDir,
+      getConfig: () => this.config.get(),
+      patchConfig: (patch) => this.config.patch(patch),
+    });
     this.abort = null;
     this.registry = new ToolRegistry();
     this.browser = new BrowserManager({ getConfig: () => this.config.get() });
@@ -88,53 +95,11 @@ class Agent {
   }
 
   loadSkills() {
-    const cfg = this.config.get();
-    const disabled = new Set(cfg.skills?.disabled || []);
-    const roots = [path.join(this.appRoot, 'skills'), path.join(this.userDataDir, 'skills')];
-    const parts = [];
-    for (const root of roots) {
-      try {
-        if (!fs.existsSync(root)) continue;
-        for (const name of fs.readdirSync(root)) {
-          if (!name.endsWith('.md')) continue;
-          const id = name.replace(/\.md$/, '');
-          if (disabled.has(id)) continue;
-          const content = fs.readFileSync(path.join(root, name), 'utf8');
-          parts.push(`## 技能：${id}\n${content}`);
-        }
-      } catch (_) { /* ignore */ }
-    }
-    return parts.join('\n\n');
+    return this.skills.buildPrompt();
   }
 
   listSkills() {
-    const cfg = this.config.get();
-    const disabled = new Set(cfg.skills?.disabled || []);
-    const roots = [
-      { dir: path.join(this.appRoot, 'skills'), builtin: true },
-      { dir: path.join(this.userDataDir, 'skills'), builtin: false },
-    ];
-    const out = [];
-    for (const root of roots) {
-      try {
-        if (!fs.existsSync(root.dir)) continue;
-        for (const name of fs.readdirSync(root.dir)) {
-          if (!name.endsWith('.md')) continue;
-          const id = name.replace(/\.md$/, '');
-          const content = fs.readFileSync(path.join(root.dir, name), 'utf8');
-          out.push({
-            id,
-            name,
-            builtin: root.builtin,
-            enabled: !disabled.has(id),
-            bytes: content.length,
-            preview: content.split('\n').slice(0, 3).join(' ').slice(0, 120),
-            path: path.join(root.dir, name),
-          });
-        }
-      } catch (_) { /* ignore */ }
-    }
-    return out;
+    return this.skills.list();
   }
 
   async buildUserMessage(text, attachments, providerType) {

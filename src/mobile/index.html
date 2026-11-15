@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0a0a0b" />
+<title>agent_etc 手机版</title>
+<style>
+:root{--bg:#0a0a0b;--panel:#111114;--panel2:#17171c;--line:#26262d;--text:#e9e9ef;--dim:#9a9aa6;--dim2:#6f6f7c;--accent:#7aa2ff;--ok:#57d38c;--err:#ff7a7a}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;display:flex;flex-direction:column;overscroll-behavior:none}
+header{position:sticky;top:0;z-index:5;background:rgba(10,10,11,.86);backdrop-filter:blur(14px);border-bottom:1px solid var(--line);padding:calc(10px + env(safe-area-inset-top)) 14px 10px;display:flex;align-items:center;gap:10px}
+.mark{width:30px;height:30px;border-radius:8px;background:#000;border:1px solid #222;display:grid;place-items:center;flex:0 0 auto}
+.mark span{font-weight:800;font-size:16px;color:transparent;-webkit-text-stroke:1.5px #e9e9ef}
+.brand{font-weight:650;letter-spacing:.2px}
+.sub{font-size:11px;color:var(--dim2)}
+.grow{flex:1;min-width:0}
+.pill{font-size:11px;color:var(--dim);border:1px solid var(--line);background:var(--panel);padding:4px 8px;border-radius:999px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:44vw}
+.iconbtn{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--text);font-size:15px}
+main{flex:1;overflow-y:auto;padding:14px 14px calc(16px + env(safe-area-inset-bottom));-webkit-overflow-scrolling:touch}
+.msg{max-width:88%;margin:0 0 12px;padding:10px 12px;border-radius:12px;white-space:pre-wrap;word-break:break-word;font-size:14px}
+.msg.user{margin-left:auto;background:#20242f;border:1px solid #2c3242}
+.msg.bot{background:var(--panel);border:1px solid var(--line)}
+.msg .role{font-size:10px;color:var(--dim2);margin-bottom:4px;letter-spacing:.4px}
+.tool{margin:0 0 10px;border:1px solid var(--line);background:var(--panel2);border-radius:10px;overflow:hidden}
+.tool .head{display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:12px;color:var(--dim)}
+.tool .name{color:var(--text);font-weight:600}
+.tool pre{margin:0;padding:8px 10px;border-top:1px solid var(--line);font-size:11px;color:var(--dim);white-space:pre-wrap;word-break:break-all;max-height:150px;overflow:auto}
+.tool .st{margin-left:auto;font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid var(--line)}
+.tool.ok .st{color:var(--ok);border-color:rgba(87,211,140,.35)}
+.tool.fail .st{color:var(--err);border-color:rgba(255,122,122,.35)}
+.approval{margin:0 0 12px;border:1px solid rgba(255,196,92,.4);background:rgba(255,196,92,.06);border-radius:12px;padding:12px}
+.approval .t{font-weight:650;margin-bottom:4px}
+.approval .d{font-size:12px;color:var(--dim);white-space:pre-wrap;word-break:break-all;max-height:120px;overflow:auto}
+.approval .btns{display:flex;gap:8px;margin-top:10px}
+.approval button{flex:1;padding:9px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--text);font-size:13px}
+.approval button.ok{background:#1d3a2a;border-color:#2e5f43;color:#9fe9bd}
+.empty{color:var(--dim2);text-align:center;margin-top:18vh;padding:0 30px}
+.empty h2{font-size:18px;color:var(--text);font-weight:600;margin:14px 0 6px}
+footer{position:sticky;bottom:0;background:rgba(10,10,11,.92);backdrop-filter:blur(14px);border-top:1px solid var(--line);padding:10px 12px calc(10px + env(safe-area-inset-bottom))}
+.composer{display:flex;align-items:flex-end;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:8px 8px 8px 12px}
+textarea{flex:1;background:transparent;border:0;outline:0;color:var(--text);font:14px/1.5 inherit;resize:none;max-height:120px;padding:4px 0}
+.send{width:38px;height:38px;border-radius:11px;border:1px solid #2b3447;background:#20242f;color:#dfe6ff;font-size:17px;flex:0 0 auto}
+.send.stop{background:#3a2020;border-color:#5f2e2e;color:#ffb4b4}
+.hint{font-size:11px;color:var(--dim2);margin-top:6px;display:flex;justify-content:space-between;gap:10px}
+.steps{font-variant-numeric:tabular-nums}
+.toast{position:fixed;left:50%;bottom:86px;transform:translateX(-50%);background:#202027;border:1px solid var(--line);color:var(--text);font-size:12px;padding:8px 12px;border-radius:9px;opacity:0;transition:.25s;pointer-events:none;z-index:20;max-width:86vw}
+.toast.on{opacity:1}
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:30;display:none}
+.mask.on{display:block}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;background:var(--panel);border-top:1px solid var(--line);border-radius:16px 16px 0 0;padding:14px 14px calc(16px + env(safe-area-inset-bottom));transform:translateY(105%);transition:.28s}
+.sheet.on{transform:none}
+.sheet h3{margin:0 0 10px;font-size:15px}
+.sheet .srow{padding:11px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;font-size:13px;display:flex;gap:8px;align-items:center}
+.sheet .srow span{color:var(--dim2);font-size:11px}
+.sheet .new{background:#1a2740;border-color:#2b3f63;color:#cfdcff;text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <div class="mark"><span>A</span></div>
+  <div class="grow">
+    <div class="brand">agent_etc</div>
+    <div class="sub" id="statusSub">连接中…</div>
+  </div>
+  <div class="pill" id="modelPill">模型 —</div>
+  <button class="iconbtn" id="btnSessions" title="任务">☰</button>
+</header>
+
+<main id="main">
+  <div class="empty" id="empty">
+    <div style="font-size:34px">A</div>
+    <h2>agent_etc 手机版</h2>
+    <div>和电脑上同一个 Agent、同一份会话。工具执行前会在手机上请求你确认。</div>
+  </div>
+</main>
+
+<footer>
+  <div class="composer">
+    <textarea id="input" rows="1" placeholder="描述要完成的工作…"></textarea>
+    <button class="send" id="btnSend">↑</button>
+  </div>
+  <div class="hint"><span id="hintText">Enter 发送 · Shift+Enter 换行</span><span class="steps" id="steps"></span></div>
+</footer>
+
+<div class="toast" id="toast"></div>
+<div class="mask" id="mask"></div>
+<div class="sheet" id="sheet">
+  <h3>任务</h3>
+  <div id="sessionList"></div>
+  <div class="srow new" id="btnNew"><span style="color:#cfdcff">＋ 新建任务</span></div>
+</div>
+
+<script>
+const qs = new URLSearchParams(location.search);
+const token = qs.get('t') || '';
+const $ = (s) => document.querySelector(s);
+const state = { sessions: [], current: '', streaming: null, approvalEls: new Map(), model: '', steps: '' };
+
+function toast(t){ const el=$('#toast'); el.textContent=t; el.classList.add('on'); clearTimeout(toast._t); toast._t=setTimeout(()=>el.classList.remove('on'),2200); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+async function api(p, opt){
+  const r = await fetch(p + (p.includes('?')?'&':'?') + 't=' + token, { headers:{'content-type':'application/json','x-etc-token':token}, ...opt });
+  return r.json();
+}
+function scrollBottom(){ const m=$('#main'); m.scrollTop = m.scrollHeight; }
+
+function addMsg(role, text){
+  if(!text) return null;
+  $('#empty')?.remove();
+  const el=document.createElement('div');
+  el.className='msg ' + (role==='user'?'user':'bot');
+  el.innerHTML = '<div class="role">'+(role==='user'?'你':'agent_etc')+'</div>';
+  const body=document.createElement('div'); body.textContent=text; el.appendChild(body);
+  $('#main').appendChild(el); scrollBottom(); return el;
+}
+function addTool(e){
+  const el=document.createElement('div'); el.className='tool';
+  el.dataset.id=e.id;
+  const argPreview = e.args && Object.keys(e.args).length ? JSON.stringify(e.args, null, 2) : '（无参数）';
+  el.innerHTML='<div class="head"><span class="name">'+esc(e.name)+'</span><span class="st">执行中</span></div><pre>'+esc(argPreview)+'</pre>';
+  $('#main').appendChild(el); scrollBottom(); return el;
+}
+function finishTool(e){
+  const el=[...$('#main').querySelectorAll('.tool')].find(x=>x.dataset.id===e.id);
+  if(!el) return;
+  const outcome = e.outcome || {};
+  const ok = outcome.ok !== false;
+  el.classList.add(ok?'ok':'fail');
+  el.querySelector('.st').textContent = ok?'完成':'失败';
+  let out = outcome.result;
+  if(out === undefined) out = outcome.error;
+  if(out === undefined) out = outcome;
+  const txt = typeof out==='string'?out:JSON.stringify(out,null,2);
+  el.querySelector('pre').textContent = (txt===undefined?'（无输出）':String(txt).slice(0,1200));
+  scrollBottom();
+}
+function showApproval(e){
+  const el=document.createElement('div'); el.className='approval';
+  el.innerHTML='<div class="t">需要你确认</div><div class="d"></div><div class="btns"><button class="no">拒绝</button><button class="ok">允许这一次</button></div>';
+  el.querySelector('.d').textContent = JSON.stringify(e.req,null,2).slice(0,500);
+  el.querySelector('.no').onclick=()=>respond(e.id,false);
+  el.querySelector('.ok').onclick=()=>respond(e.id,true);
+  $('#main').appendChild(el); scrollBottom();
+}
+async function respond(id, approved){
+  await api('/api/approval',{method:'POST',body:JSON.stringify({id,approved})});
+  [...$('#main').querySelectorAll('.approval')].forEach(x=>x.remove());
+  toast(approved?'已允许':'已拒绝');
+}
+
+function connectEvents(){
+  const es = new EventSource('/api/events?t='+encodeURIComponent(token));
+  es.onmessage = (ev)=>{
+    let data; try{ data=JSON.parse(ev.data);}catch(_){return}
+    if(!data.sessionId || data.sessionId!==state.current) {
+      if(data.event?.type==='approval') showApproval(data.event);
+      return;
+    }
+    const e=data.event;
+    if(e.type==='delta'){
+      if(!state.streaming){ state.streaming=addMsg('assistant','')?.querySelector('div:last-child'); }
+      if(state.streaming) { state.streaming.textContent += e.text; scrollBottom(); }
+    } else if(e.type==='assistant'){
+      if(state.streaming) { state.streaming.textContent = e.content || state.streaming.textContent; state.streaming=null; }
+      else addMsg('assistant', e.content);
+    } else if(e.type==='tool-start'){
+      addTool(e);
+    } else if(e.type==='tool-result'){
+      finishTool(e);
+    } else if(e.type==='step'){
+      state.steps = e.step+'/'+e.maxSteps; $('#steps').textContent = state.steps;
+    } else if(e.type==='done' || e.type==='stopped' || e.type==='error'){
+      state.streaming=null;
+      $('#btnSend').classList.remove('stop'); $('#btnSend').textContent='↑'; $('#steps').textContent='';
+      if(e.type==='error') toast(e.message||'出错了');
+    }
+  };
+  es.onerror = ()=>{ $('#statusSub').textContent='连接断开，重试中…'; };
+}
+
+async function refresh(){
+  try{
+    const s = await api('/api/state');
+    if(!s.ok) throw new Error(s.error||'状态读取失败');
+    state.model = s.provider?.model || '未配置';
+    $('#modelPill').textContent = state.model;
+    $('#statusSub').textContent = (s.local?.state==='running'?'本地模型运行中':'在线') + (s.version?(' · v'+s.version):'');
+    state.sessions = s.sessions || [];
+    renderSessions();
+    if(!state.current && s.session){ state.current=s.session.id; renderSession(s.session); }
+  }catch(err){ $('#statusSub').textContent='未连接：'+err.message; }
+}
+function renderSessions(){
+  $('#sessionList').innerHTML = state.sessions.map(s=>`<div class="srow" data-id="${esc(s.id)}"><div class="grow">${esc(s.title)}</div><span>${new Date(s.updatedAt||s.createdAt||0).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</span></div>`).join('') || '<div style="color:#6f6f7c;font-size:12px;padding:6px">还没有任务</div>';
+  $('#sessionList').querySelectorAll('.srow[data-id]').forEach(row=>row.onclick=async()=>{
+    closeSheet(); await loadSession(row.dataset.id);
+  });
+}
+async function loadSession(id){
+  const s=await api('/api/state?sid='+encodeURIComponent(id));
+  if(s.session){ state.current=s.session.id; renderSession(s.session); }
+}
+function renderSession(sess){
+  $('#main').innerHTML='';
+  for(const m of sess.messages||[]){
+    if(m.role==='user') addMsg('user', m.content || '');
+    else if(m.role==='assistant'){ if(m.content) addMsg('assistant', m.content); }
+    else if(m.role==='tool'){
+      let outcome={ok:true,result:m.content};
+      try{ outcome=JSON.parse(m.content); }catch(_){}
+      if(typeof outcome==='object' && !('ok' in outcome)) outcome={ok:true,result:outcome};
+      const fake={id:'h'+m.ts,name:m.name||'tool'};
+      addTool(fake); finishTool({...fake,outcome});
+    }
+  }
+  if(!(sess.messages||[]).length){ $('#main').innerHTML='<div class="empty"><div style="font-size:30px">A</div><h2>'+esc(sess.title)+'</h2><div>发一条消息开始。</div></div>'; }
+  scrollBottom();
+}
+
+async function send(){
+  const text = $('#input').value.trim();
+  if(!text) return;
+  if($('#btnSend').classList.contains('stop')){ await api('/api/stop',{method:'POST',body:'{}'}); return; }
+  $('#input').value=''; resize();
+  addMsg('user', text);
+  state.streaming=null;
+  $('#btnSend').classList.add('stop'); $('#btnSend').textContent='■';
+  const r = await api('/api/chat',{method:'POST',body:JSON.stringify({text,sessionId:state.current})});
+  if(!r.ok){ toast(r.error||'发送失败'); $('#btnSend').classList.remove('stop'); $('#btnSend').textContent='↑'; return; }
+  if(r.sessionId && r.sessionId!==state.current){ state.current=r.sessionId; refresh(); }
+}
+async function newSession(){
+  closeSheet();
+  const r=await api('/api/session',{method:'POST',body:JSON.stringify({title:'手机任务'})});
+  if(r.ok && r.sessionId){ state.current=r.sessionId; $('#main').innerHTML=''; toast('已新建任务'); refresh(); }
+}
+function resize(){ const t=$('#input'); t.style.height='auto'; t.style.height=Math.min(120,t.scrollHeight)+'px'; }
+function openSheet(){ $('#mask').classList.add('on'); $('#sheet').classList.add('on'); }
+function closeSheet(){ $('#mask').classList.remove('on'); $('#sheet').classList.remove('on'); }
+
+$('#btnSend').onclick=send;
+$('#btnNew').onclick=newSession;
+$('#btnSessions').onclick=openSheet;
+$('#mask').onclick=closeSheet;
+$('#input').addEventListener('input',resize);
+$('#input').addEventListener('keydown',(e)=>{ if(e.key==='Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); send(); } });
+
+refresh(); connectEvents();
+</script>
+</body>
+</html>

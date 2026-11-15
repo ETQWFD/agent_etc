@@ -554,6 +554,7 @@ function openSettings(tab = 'providers') {
           ${tabButton('browser', '浏览器')}
           ${tabButton('plugins', '插件')}
           ${tabButton('skills', '技能')}
+          ${tabButton('mobile', '手机版')}
           ${tabButton('permissions', '权限与工作区')}
           ${tabButton('about', '关于')}
         </nav>
@@ -587,6 +588,7 @@ async function renderPanel() {
     case 'browser': return renderBrowser(panel);
     case 'plugins': return renderPlugins(panel);
     case 'skills': return renderSkills(panel);
+    case 'mobile': return renderMobile(panel);
     case 'permissions': return renderPermissions(panel);
     case 'about': return renderAbout(panel);
     default: return renderProviders(panel);
@@ -694,12 +696,20 @@ async function renderLocal(panel) {
   const s = await etc.localmodel.status();
   state.localStatus = s;
   const cfg = state.config.localModel;
+  const eng = s.engine || {};
+  const engOk = !!eng.ok;
+  const engTone = engOk ? 'ok' : (eng.kind === 'mnn-demo' || eng.kind === 'unknown' ? 'warn' : '');
   panel.innerHTML = `
     <h3>本地 GGUF 模型</h3>
-    <div class="desc">选择 llama.cpp 的 <code class="inline" style="background:#1c1c22;padding:1px 5px;border-radius:4px">llama-server</code> 可执行文件与 .gguf 权重，agent_etc 会自动拉起本地 OpenAI 兼容服务，并把模型切为当前。</div>
-    <div class="field"><label>llama-server 运行时</label>
-      <div class="row"><input id="runtimePath" readonly value="${esc(cfg.runtimePath || '')}" placeholder="尚未选择" />
-      <button class="btn sm" id="pickRuntime">选择</button></div>
+    <div class="desc">agent_etc 用 llama.cpp 的 <b>llama-server</b> 加载 .gguf，起来后就是 OpenAI 兼容接口，会自动切为当前模型。选错引擎（例如 MNN 的 <code class="inline">llm_demo.exe</code>）时，这里会直接说明原因。</div>
+    <div class="card">
+      <div class="list-line">
+        <div class="grow"><div class="t">引擎状态 <span class="badge ${engTone}">${esc(eng.kind || 'none')}</span></div>
+        <div class="d">${esc(eng.path || cfg.runtimePath || '未找到 llama-server')}${eng.version ? ' · ' + esc(eng.version) : ''}</div></div>
+        <button class="btn sm" id="installEngine">自动安装引擎</button>
+        <button class="btn sm ghost" id="pickRuntime">手动选择</button>
+      </div>
+      ${engOk ? '' : `<div class="hintbox" style="border-color:rgba(255,196,92,.35);color:#ffd79a">${esc(eng.message || '未找到可用引擎')}</div>`}
     </div>
     <div class="field"><label>GGUF 模型</label>
       <div class="row"><input id="modelPath" readonly value="${esc(cfg.modelPath || '')}" placeholder="尚未选择" />
@@ -720,11 +730,20 @@ async function renderLocal(panel) {
     </div>
     ${s.error ? `<div class="hintbox" style="border-color:rgba(255,122,122,.3);color:#ffb4b4">${esc(s.error)}</div>` : ''}
     <div class="field"><label>运行日志</label><div class="logbox">${esc((s.logs || []).join('\n') || '暂无日志')}</div></div>
-    <div class="hintbox">没有运行时？到 github.com/ggml-org/llama.cpp/releases 下载 <b>llama-*-bin-win-x64.zip</b>，解压后指向其中的 <b>llama-server.exe</b>。首次加载大模型会慢一些，最长等待 3 分钟。</div>`;
+    <div class="hintbox">没有引擎就点「自动安装引擎」，会从 llama.cpp 官方 Release 下载当前平台的预编译包并解压到用户数据目录。首次加载模型最长等 3 分钟。</div>`;
 
   panel.querySelector('#pickRuntime').addEventListener('click', async () => {
     const p = await etc.localmodel.pickRuntime();
     if (p) { state.config = await etc.config.get(); renderLocal(panel); toast('运行时已设置', 'ok'); }
+  });
+  panel.querySelector('#installEngine').addEventListener('click', async () => {
+    const btn = panel.querySelector('#installEngine');
+    btn.textContent = '安装中…'; btn.disabled = true;
+    toast('开始下载 llama.cpp 引擎，可能需要几分钟', 'ok');
+    const res = await etc.localmodel.installEngine();
+    if (res.ok) { state.config = await etc.config.get(); toast('引擎已安装：' + (res.version || ''), 'ok'); }
+    else toast(res.error || '引擎安装失败', 'err');
+    renderLocal(panel);
   });
   panel.querySelector('#pickModel').addEventListener('click', async () => {
     const p = await etc.localmodel.pickModel();
@@ -892,17 +911,26 @@ async function renderSkills(panel) {
   const list = await etc.skills.list();
   panel.innerHTML = `
     <h3>技能</h3>
-    <div class="desc">技能是会被注入系统提示的 Markdown 说明，用来固化流程与口径。内置技能在安装目录 <code class="inline">skills/</code>，自定义技能放在用户数据目录 <code class="inline">skills/</code>。</div>
+    <div class="desc">技能是被注入系统提示的 Markdown 说明。兼容两种格式：单文件 <code class="inline">xxx.md</code>（豆包/通用，可选 YAML front matter），以及目录里的 <code class="inline">SKILL.md</code>（DeepSeek Harness / Claude 风格）。导入会复制到用户数据目录，原文件不动。</div>
+    <div class="row" style="margin-bottom:10px">
+      <button class="btn sm" id="importSkillFile">导入技能文件</button>
+      <button class="btn sm" id="importSkillFolder">导入技能目录</button>
+      <button class="btn sm ghost" id="importHarness">从 DeepSeek Harness 导入</button>
+      <button class="btn sm ghost" id="openSkillDir">打开技能目录</button>
+    </div>
     <div class="card">
       ${list.map((s) => `
         <div class="list-line">
-          <div class="grow"><div class="t">${esc(s.id)} ${s.builtin ? '<span class="badge">内置</span>' : '<span class="badge">自定义</span>'}</div>
-          <div class="d">${esc(s.preview)} · ${s.bytes} 字</div></div>
+          <div class="grow">
+            <div class="t">${esc(s.name)} <span class="badge ${s.builtin ? '' : 'ok'}">${s.builtin ? '内置' : esc(s.origin || '导入')}</span> <span class="badge">${esc(s.format || 'md')}</span></div>
+            <div class="d">${esc(s.description || s.preview)} · ${s.bytes} 字</div>
+          </div>
           <button class="btn sm ghost" data-open="${esc(s.id)}">打开</button>
+          ${s.builtin ? '' : `<button class="btn sm ghost" data-del="${esc(s.id)}">删除</button>`}
           <div class="switch ${s.enabled ? 'on' : ''}" data-skill="${esc(s.id)}"></div>
         </div>`).join('') || '<div class="hintbox">还没有技能文件。</div>'}
     </div>
-    <div class="hintbox">把 .md 文件放进用户数据目录的 skills 文件夹即可新增技能；也可以直接点「打开」用默认编辑器改。</div>`;
+    <div class="hintbox">DeepSeek Harness 的默认技能目录（~/.dsh/skills 等）会一次扫描导入；也可以直接把 .zip 技能包拖进来选择。</div>`;
 
   $$('[data-skill]', panel).forEach((sw) => sw.addEventListener('click', async () => {
     const enabled = !sw.classList.contains('on');
@@ -911,6 +939,33 @@ async function renderSkills(panel) {
     renderSkills(panel);
   }));
   $$('[data-open]', panel).forEach((b) => b.addEventListener('click', () => etc.skills.open(b.dataset.open)));
+  $$('[data-del]', panel).forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm('删除这个技能？只删除导入到 agent_etc 的副本。')) return;
+    const r = await etc.skills.remove(b.dataset.del);
+    toast(r.ok ? '已删除' : (r.error || '删除失败'), r.ok ? 'ok' : 'err');
+    renderSkills(panel);
+  }));
+  panel.querySelector('#importSkillFile').addEventListener('click', async () => {
+    const r = await etc.skills.importFile();
+    if (!r) return;
+    toast(r.imported ? `已导入 ${r.imported} 个技能` : '没有导入任何技能', r.imported ? 'ok' : 'err');
+    renderSkills(panel);
+  });
+  panel.querySelector('#importSkillFolder').addEventListener('click', async () => {
+    const r = await etc.skills.importFolder();
+    if (!r) return;
+    toast(r.ok ? `已导入 ${r.imported} 个技能` : (r.error || '没有找到技能'), r.ok ? 'ok' : 'err');
+    renderSkills(panel);
+  });
+  panel.querySelector('#importHarness').addEventListener('click', async () => {
+    const r = await etc.skills.importHarness();
+    toast(r.ok ? `已从 Harness 导入 ${r.imported} 个技能` : (r.error || '没有找到'), r.ok ? 'ok' : 'err');
+    renderSkills(panel);
+  });
+  panel.querySelector('#openSkillDir').addEventListener('click', async () => {
+    const info = state.info || {};
+    await etc.app.openPath((info.userData || '') + (info.platform === 'win32' ? '\\skills' : '/skills'));
+  });
 }
 
 function renderPermissions(panel) {
@@ -971,26 +1026,117 @@ function renderPermissions(panel) {
   });
 }
 
+function renderMobile(panel) {
+  const cfg = state.config.mobile || {};
+  const info = state.info || {};
+  panel.innerHTML = `
+    <h3>手机版</h3>
+    <div class="desc">在电脑上开启后，手机与电脑连同一个 Wi-Fi，用浏览器打开下面的地址，就是同一个 agent_etc：同一份会话、同一套工具，工具执行前会在手机上请求确认。可「添加到主屏幕」当 App 用。</div>
+    <div class="grid2">
+      <div class="field"><label>端口</label><input id="mPort" type="number" value="${cfg.port || 8787}" /></div>
+      <div class="field"><label>访问令牌</label><input id="mToken" readonly value="${esc(cfg.token || '')}" placeholder="启动后自动生成" /></div>
+    </div>
+    <div class="row" style="margin:12px 0">
+      <button class="btn primary" id="mStart">开启手机访问</button>
+      <button class="btn" id="mStop">关闭</button>
+      <span class="badge" id="mState">未开启</span>
+    </div>
+    <div class="field"><label>手机访问地址</label><div class="card" id="mUrls"><div class="hintbox">开启后会显示局域网地址。</div></div></div>
+    <div class="hintbox">如果手机打不开：确认在同一 Wi-Fi、Windows 防火墙允许 agent_etc 的入站连接；公司/校园网可能禁用了设备互访。</div>`;
+
+  const urlsBox = panel.querySelector('#mUrls');
+  const stateBox = panel.querySelector('#mState');
+
+  async function refreshMobile() {
+    const st = await etc.mobile.status();
+    stateBox.textContent = st.running ? ('运行中 · 端口 ' + st.port) : '未开启';
+    stateBox.className = 'badge' + (st.running ? ' ok' : '');
+    panel.querySelector('#mToken').value = st.token || cfg.token || '';
+    if (st.running && st.urls.length) {
+      urlsBox.innerHTML = st.urls.map((u) => `<div class="list-line"><div class="grow"><div class="d" style="word-break:break-all">${esc(u)}</div></div><button class="btn sm" data-copy="${esc(u)}">复制</button></div>`).join('');
+      $$('[data-copy]', urlsBox).forEach((b) => b.addEventListener('click', () => copyText(b.dataset.copy)));
+    } else {
+      urlsBox.innerHTML = '<div class="hintbox">开启后会显示局域网地址。</div>';
+    }
+  }
+
+  panel.querySelector('#mStart').addEventListener('click', async () => {
+    const port = Number(panel.querySelector('#mPort').value) || 8787;
+    await etc.mobile.save({ port });
+    const r = await etc.mobile.start();
+    if (r.ok) { state.config = await etc.config.get(); toast('手机版已开启', 'ok'); }
+    else toast(r.error || '开启失败', 'err');
+    refreshMobile();
+  });
+  panel.querySelector('#mStop').addEventListener('click', async () => {
+    await etc.mobile.stop();
+    toast('已关闭手机访问', 'ok');
+    refreshMobile();
+  });
+  refreshMobile();
+}
+
 function renderAbout(panel) {
   const info = state.info || {};
   panel.innerHTML = `
     <h3>关于 agent_etc</h3>
     <div class="card">
-      <div class="list-line"><div class="grow"><div class="t">版本</div><div class="d">${esc(info.version || '1.0.0')}</div></div></div>
+      <div class="list-line"><div class="grow"><div class="t">版本</div><div class="d">${esc(info.version || '1.1.0')}</div></div><span class="badge ok">1.1.0</span></div>
+      <div class="list-line"><div class="grow"><div class="t">作者</div><div class="d">ETC</div></div></div>
       <div class="list-line"><div class="grow"><div class="t">运行平台</div><div class="d">${esc(info.platform || '')}</div></div></div>
-      <div class="list-line"><div class="grow"><div class="t">用户数据</div><div class="d">${esc(info.userData || '')}</div></div></div>
-      <div class="list-line"><div class="grow"><div class="t">安装目录</div><div class="d">${esc(info.appRoot || '')}</div></div></div>
+      <div class="list-line"><div class="grow"><div class="t">用户数据</div><div class="d" style="word-break:break-all">${esc(info.userData || '')}</div></div></div>
+      <div class="list-line"><div class="grow"><div class="t">安装目录</div><div class="d" style="word-break:break-all">${esc(info.appRoot || '')}</div></div></div>
+      <div class="list-line"><div class="grow"><div class="t">许可证</div><div class="d">MIT · Copyright © 2026 ETC</div></div></div>
     </div>
-    <div class="hintbox" style="margin-bottom:10px">agent_etc 是一个本地优先的桌面 Agent 工作台：模型由你接，工具由你装，权限由你定。所有会话、配置、插件都保存在本机。</div>
-    <div class="row">
-      <button class="btn sm" id="openData">打开用户数据目录</button>
+    <div class="row" style="margin:12px 0">
+      <button class="btn sm primary" id="checkUpdate">检查更新</button>
       <button class="btn sm ghost" id="openGithub">GitHub 仓库</button>
+      <button class="btn sm ghost" id="openReleases">Release 下载页</button>
+      <button class="btn sm ghost" id="openData">打开用户数据目录</button>
     </div>
+    <div id="updateBox"></div>
     <h3 style="margin-top:22px">代码签名</h3>
-    <div class="hintbox">安装包与便携版均由 <b>ETC</b> 代码签名证书签名。若系统提示「未知发布者」，可安装随包提供的 ETC-Root.crt 到「受信任的根证书颁发机构」，签名即可验证通过。</div>`;
+    <div class="hintbox">安装包与便携版由 <b>ETC</b> 代码签名证书签名（CN=ETC，含 Code Signing EKU，SHA-256）。若系统提示「未知发布者」，把随包的 <b>ETC-Root.crt</b> 装进「受信任的根证书颁发机构」，签名即可验证通过。</div>`;
 
   panel.querySelector('#openData').addEventListener('click', () => etc.app.openPath(info.userData));
-  panel.querySelector('#openGithub').addEventListener('click', () => etc.app.openExternal('https://github.com/'));
+  panel.querySelector('#openGithub').addEventListener('click', () => etc.app.openExternal('https://github.com/ETQWFD/agent_etc'));
+  panel.querySelector('#openReleases').addEventListener('click', () => etc.app.openExternal('https://github.com/ETQWFD/agent_etc/releases/latest'));
+
+  panel.querySelector('#checkUpdate').addEventListener('click', async () => {
+    const btn = panel.querySelector('#checkUpdate');
+    const box = panel.querySelector('#updateBox');
+    btn.disabled = true; btn.textContent = '检查中…';
+    box.innerHTML = '<div class="hintbox">正在向 GitHub 查询最新 Release…</div>';
+    const r = await etc.updates.check();
+    btn.disabled = false; btn.textContent = '检查更新';
+    if (!r.ok) {
+      box.innerHTML = `<div class="hintbox" style="border-color:rgba(255,122,122,.3);color:#ffb4b4">检查失败：${esc(r.error || '未知错误')}</div>`;
+      return;
+    }
+    if (!r.hasUpdate) {
+      box.innerHTML = `<div class="hintbox" style="border-color:rgba(87,211,140,.3);color:#9fe9bd">已是最新版本（${esc(r.current)}）。仓库最新 Release：${esc(r.latest)}。</div>`;
+      return;
+    }
+    box.innerHTML = `
+      <div class="hintbox" style="border-color:rgba(122,162,255,.35)">
+        <div class="row" style="justify-content:space-between"><b>发现新版本 ${esc(r.latest)}</b><button class="btn sm" id="goDownload">打开下载页</button></div>
+        <div class="d" style="margin-top:8px;white-space:pre-wrap;max-height:180px;overflow:auto">${esc((r.notes || '').slice(0, 1200))}</div>
+      </div>`;
+    box.querySelector('#goDownload').addEventListener('click', () => etc.app.openExternal(r.url));
+  });
+}
+
+function copyText(text) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+    toast('已复制', 'ok');
+  } catch (_) { toast('复制失败，请手动选择', 'err'); }
 }
 
 /* ---------------- init ---------------- */
