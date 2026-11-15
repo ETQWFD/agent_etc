@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>agent_etc</title>
+<style>
+:root{
+  --bg:#09090b; --panel:#111114; --panel2:#17171c; --line:#25252d; --line2:#30303a;
+  --text:#ececf1; --muted:#8c8c99; --dim:#666672; --accent:#9be7b4; --accent2:#6fd39a;
+  --danger:#ff7b7b; --user:#1d2a24;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);overflow-x:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif;font-size:14px;overscroll-behavior:none}
+body{display:flex;flex-direction:column;height:100dvh}
+button,input,textarea,select{font-family:inherit;color:inherit}
+button{cursor:pointer}
+.hidden{display:none!important}
+#top{height:58px;flex:0 0 58px;display:flex;align-items:center;gap:8px;padding:0 10px;border-bottom:1px solid var(--line);background:rgba(9,9,11,.96);position:relative;z-index:20}
+.logo{width:32px;height:32px;border-radius:9px;background:#000;border:1px solid #2c2c34;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;color:var(--accent);letter-spacing:-1px}
+.brand{display:flex;flex-direction:column;line-height:1.1;min-width:0;max-width:150px;overflow:hidden}
+.brand b{font-size:14px;letter-spacing:.2px}
+.brand small{font-size:9px;color:var(--dim);margin-top:3px;white-space:nowrap}
+.spacer{flex:1}
+.iconbtn{width:32px;height:32px;flex:0 0 32px;border-radius:10px;border:1px solid var(--line);background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--muted)}
+.iconbtn:active{background:#202027}
+.modechip{font-size:10px;padding:4px 7px;border-radius:999px;border:1px solid #2d3a32;background:#121a15;color:#a9e9be;white-space:nowrap;max-width:30vw;overflow:hidden;text-overflow:ellipsis}
+#main{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
+#chat{flex:1;overflow-y:auto;padding:18px 16px 130px;scroll-behavior:smooth}
+.empty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:10px 20px}
+.empty .orb{width:74px;height:74px;border-radius:22px;border:1px solid #2b3a30;background:radial-gradient(circle at 40% 30%,#1d3326,#0c100e 70%);display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:800;color:var(--accent);margin-bottom:20px;box-shadow:0 0 40px rgba(80,200,130,.09)}
+.empty h1{font-size:23px;margin:0 0 8px;font-weight:650;letter-spacing:.2px}
+.empty p{color:var(--muted);font-size:12.5px;line-height:1.6;margin:0 0 18px;max-width:320px}
+.quick{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:360px}
+.quick button{border:1px solid var(--line);background:var(--panel);color:#c9c9d3;border-radius:10px;padding:9px 12px;font-size:12px}
+.quick button:active{background:#1c1c22}
+.msg{display:flex;margin:0 0 20px;gap:10px;align-items:flex-start}
+.msg.user{justify-content:flex-end}
+.avatar{width:27px;height:27px;flex:0 0 27px;border-radius:8px;background:#0b0f0c;border:1px solid #24352a;display:flex;align-items:center;justify-content:center;color:var(--accent);font-weight:800;font-size:13px;margin-top:2px}
+.bubble{max-width:82%;border-radius:14px;padding:11px 13px;line-height:1.65;font-size:13.5px;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
+.msg.assistant .bubble{background:var(--panel);border:1px solid var(--line);border-top-left-radius:5px;color:#e4e4ea}
+.msg.user .bubble{background:var(--user);border:1px solid #294235;border-top-right-radius:5px;color:#e9fff0}
+.tools{margin-top:8px;display:flex;flex-direction:column;gap:5px}
+.tool{font-size:11px;color:#a9cdb7;background:#101a14;border:1px solid #24372b;border-radius:7px;padding:5px 8px;display:flex;gap:6px;align-items:flex-start}
+.tool b{font-weight:600;color:#cdeed9;flex:0 0 auto}
+.tool span{color:#7e9c88;word-break:break-all}
+.typing{display:inline-flex;gap:4px;align-items:center;color:var(--muted);font-size:12px}
+.dot{width:5px;height:5px;border-radius:50%;background:var(--accent);animation:blink 1.1s infinite}
+.dot:nth-child(2){animation-delay:.18s}.dot:nth-child(3){animation-delay:.36s}
+@keyframes blink{0%,80%,100%{opacity:.2}40%{opacity:1}}
+#composer{position:absolute;left:0;right:0;bottom:0;width:100%;box-sizing:border-box;padding:10px 12px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(9,9,11,0),rgba(9,9,11,.97) 26%);z-index:15}
+.composerbox{border:1px solid var(--line2);background:#111115;border-radius:16px;padding:8px 8px 7px 12px;display:flex;flex-direction:column;gap:6px;box-shadow:0 8px 30px rgba(0,0,0,.35)}
+#input{width:100%;min-height:38px;max-height:140px;resize:none;border:0;outline:0;background:transparent;color:var(--text);font-size:14px;line-height:1.5;padding:6px 2px}
+#input::placeholder{color:#5d5d68}
+.composerbar{display:flex;align-items:center;gap:7px;padding:0 2px}
+.pill{font-size:10.5px;color:#9fb3a7;background:#121a15;border:1px solid #26382c;border-radius:999px;padding:3px 8px}
+.pill.warn{color:#d8c58f;background:#1a1710;border-color:#3a3322}
+.send{flex:0 0 34px;width:34px;height:34px;border-radius:11px;border:0;background:var(--accent);color:#08120b;font-size:16px;font-weight:800;display:flex;align-items:center;justify-content:center;margin-left:auto}
+.send:disabled{opacity:.35}
+.footnote{text-align:center;font-size:10px;color:#55555f;margin-top:7px}
+/* drawer */
+#drawer{position:absolute;inset:0;z-index:40;background:rgba(0,0,0,.5);display:none}
+#drawer.show{display:block}
+.drawerpanel{position:absolute;left:0;top:0;bottom:0;width:82%;max-width:320px;background:#0d0d10;border-right:1px solid var(--line);display:flex;flex-direction:column;padding:16px 12px calc(16px + env(safe-area-inset-bottom));animation:slide .18s ease-out}
+@keyframes slide{from{transform:translateX(-20px);opacity:.6}to{transform:none;opacity:1}}
+.drawerpanel h3{font-size:12px;color:var(--muted);font-weight:600;margin:4px 6px 10px;letter-spacing:.5px}
+#sessionList{flex:1;overflow:auto}
+.sess{display:flex;align-items:center;gap:8px;padding:10px 10px;border-radius:9px;color:#cfcfd8;font-size:12.5px;margin-bottom:2px}
+.sess:active,.sess.active{background:#1a1a20}
+.sess span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sess i{font-style:normal;color:#666673;font-size:15px;padding:2px 4px}
+.newbtn{display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid #294232;background:#111a14;color:#c6f0d5;border-radius:10px;padding:11px;font-size:13px;margin-bottom:14px}
+/* settings */
+#settings{position:fixed;inset:0;z-index:60;background:var(--bg);display:none;flex-direction:column}
+#settings.show{display:flex}
+.shead{height:54px;flex:0 0 54px;display:flex;align-items:center;gap:12px;padding:0 14px;border-bottom:1px solid var(--line)}
+.shead b{font-size:15px}
+.tabs{display:flex;gap:6px;overflow-x:auto;padding:10px 12px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs button{border:1px solid var(--line);background:var(--panel);color:#a7a7b4;border-radius:999px;padding:7px 11px;font-size:11.5px;white-space:nowrap}
+.tabs button.active{color:#d9ffe6;border-color:#3b5a47;background:#132019}
+#settingsBody{flex:1;overflow-y:auto;padding:16px 14px calc(22px + env(safe-area-inset-bottom))}
+.section h2{font-size:13px;margin:0 0 5px;font-weight:650}
+.section .desc{font-size:11.5px;color:var(--muted);line-height:1.6;margin:0 0 14px}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:11.5px;color:#a8a8b6;margin-bottom:6px}
+.field input,.field select,.field textarea{width:100%;background:#131318;border:1px solid #2a2a33;border-radius:10px;padding:10px 11px;font-size:12.5px;outline:0;color:var(--text)}
+.field textarea{min-height:70px;resize:vertical;line-height:1.5}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:#3c6a50}
+.row{display:flex;gap:9px}.row>*{flex:1}
+.btn{border:1px solid #30303a;background:#191920;color:#d6d6df;border-radius:10px;padding:10px 13px;font-size:12.5px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#07120b;font-weight:650}
+.btn.ghost{background:transparent}
+.btn:disabled{opacity:.4}
+.note{border:1px solid #29382e;background:#101711;border-radius:10px;padding:10px 12px;color:#a9c9b4;font-size:11.5px;line-height:1.6;margin:12px 0}
+.note.warn{border-color:#3c3321;background:#17140d;color:#d8c38f}
+.memitem{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:10px 11px;margin-bottom:8px}
+.memitem .mt{font-size:12.5px;line-height:1.5;color:#dfdfe7}
+.memitem .mm{font-size:10.5px;color:#747482;margin-top:6px;display:flex;gap:10px}
+.memitem button{float:right;border:0;background:#1d1d24;color:#a9a9b5;border-radius:7px;font-size:10.5px;padding:5px 7px}
+.statusline{font-size:11.5px;color:#9b9ba8;background:#111115;border:1px solid var(--line);border-radius:9px;padding:9px 10px;white-space:pre-wrap;word-break:break-all;margin-top:10px}
+.kv{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #1d1d24;font-size:12px;color:#c8c8d2}
+.kv span:last-child{color:#8d8d9b}
+/* ask modal */
+#ask{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.62);display:none;align-items:center;justify-content:center;padding:24px}
+#ask.show{display:flex}
+.askbox{width:100%;max-width:360px;background:#111116;border:1px solid #30303a;border-radius:16px;padding:18px;box-shadow:0 20px 60px rgba(0,0,0,.55)}
+.askbox h3{margin:0 0 6px;font-size:15px}
+.askbox p{color:#b6b6c2;font-size:12.5px;line-height:1.6;margin:0 0 14px;white-space:pre-wrap}
+.askbox button{width:100%;text-align:left;margin-bottom:8px;border:1px solid #2e2e38;background:#191920;color:#e4e4ec;border-radius:10px;padding:11px 12px;font-size:12.5px}
+.askbox button:active{background:#22222b}
+.askbox .cancel{text-align:center;color:#888896;background:transparent;border:0;margin-top:2px}
+#toast{position:fixed;left:50%;bottom:88px;transform:translateX(-50%);background:#20202a;border:1px solid #363642;color:#e8e8ef;padding:9px 13px;border-radius:999px;font-size:12px;z-index:90;opacity:0;transition:.2s;pointer-events:none;max-width:80vw;text-align:center}
+#toast.show{opacity:1}
+@media(max-width:480px){.brand small{display:none}}
+@media(min-width:760px){#chat{padding-left:max(16px,calc(50% - 360px));padding-right:max(16px,calc(50% - 360px))}#composer .composerbox{max-width:760px;margin:0 auto}}
+</style>
+</head>
+<body>
+<div id="top">
+  <div class="logo">A</div>
+  <div class="brand"><b>agent_etc</b><small>手机独立版 · 不依赖电脑</small></div>
+  <div class="spacer"></div>
+  <div class="modechip" id="modeChip">未配置模型</div>
+  <button class="iconbtn" id="btnHistory" aria-label="历史">☰</button>
+  <button class="iconbtn" id="btnSettings" aria-label="设置">⚙</button>
+</div>
+<div id="main">
+  <div id="chat"></div>
+  <div id="composer">
+    <div class="composerbox">
+      <textarea id="input" placeholder="描述你要在手机上完成的事…"></textarea>
+      <div class="composerbar">
+        <span class="pill" id="enginePill">云端 API</span>
+        <span class="pill" id="memPill">记忆 0</span>
+        <button class="send" id="btnSend">↑</button>
+      </div>
+    </div>
+    <div class="footnote">工具执行前会征求你的确认；验证码请本人完成</div>
+  </div>
+</div>
+
+<div id="drawer">
+  <div class="drawerpanel">
+    <button class="newbtn" id="btnNew">＋ 新建任务</button>
+    <h3>任务</h3>
+    <div id="sessionList"></div>
+    <div style="border-top:1px solid #22222a;padding-top:12px;color:#6f6f7c;font-size:11px;line-height:1.6">agent_etc · ETC<br>本地文件在应用私有目录</div>
+  </div>
+</div>
+
+<div id="settings">
+  <div class="shead"><button class="iconbtn" id="btnCloseSettings">←</button><b>设置</b><div class="spacer"></div><span style="font-size:11px;color:#777784" id="settingsVersion">1.4.0</span></div>
+  <div class="tabs" id="tabs">
+    <button data-tab="model" class="active">模型服务</button>
+    <button data-tab="local">本地 GGUF</button>
+    <button data-tab="memory">记忆</button>
+    <button data-tab="tools">文件与权限</button>
+    <button data-tab="about">关于</button>
+  </div>
+  <div id="settingsBody"></div>
+</div>
+
+<div id="ask"><div class="askbox" id="askBox"></div></div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+const load = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
+const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const bytes = (n) => n > 1073741824 ? (n / 1073741824).toFixed(2) + " GB" : n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : n > 1024 ? (n / 1024).toFixed(0) + " KB" : (n || 0) + " B";
+const now = () => Date.now();
+
+const DEFAULT_SETTINGS = {
+  mode: "cloud", baseUrl: "", apiKey: "", model: "", temperature: 0.6, maxTokens: 2048,
+  localPath: "", localName: "", localCtx: 2048, localThreads: 4, localLoaded: false,
+  localInfo: ""
+};
+let settings = Object.assign({}, DEFAULT_SETTINGS, load("etc.settings", {}));
+let sessions = load("etc.sessions", []);
+let memories = load("etc.memory", []);
+let current = null;
+let busy = false;
+let pendingHttp = {};
+let pendingLocal = {};
+let currentTab = "model";
+
+if (!sessions.length) { newSession(false); }
+current = sessions.find(s => s.id === load("etc.last", "")) || sessions[0];
+save("etc.last", current.id);
+
+function persist() { save("etc.settings", settings); save("etc.sessions", sessions); save("etc.memory", memories); save("etc.last", current ? current.id : ""); }
+function toast(t) { const el = $("#toast"); el.textContent = t; el.classList.add("show"); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove("show"), 2200); }
+function android() { return typeof Android !== "undefined" ? Android : null; }
+function modeName() {
+  if (settings.mode === "local") return settings.localLoaded ? ("本地 · " + (settings.localName || "GGUF")) : "本地未加载";
+  return settings.model ? ("云端 · " + settings.model) : "未配置模型";
+}
+function updateTop() {
+  $("#modeChip").textContent = modeName();
+  $("#enginePill").textContent = settings.mode === "local" ? "本地 GGUF" : "云端 API";
+  $("#enginePill").className = "pill" + (settings.mode === "local" && !settings.localLoaded ? " warn" : "");
+  $("#memPill").textContent = "记忆 " + memories.length;
+  $("#settingsVersion").textContent = (android() ? android().appVersion() : "1.4.0");
+}
+
+function newSession(render = true) {
+  const s = { id: uid(), title: "新任务", messages: [], created: now(), updated: now() };
+  sessions.unshift(s); current = s; persist();
+  if (render) { renderSessions(); renderChat(); closeDrawer(); }
+  return s;
+}
+function openSession(id) { current = sessions.find(s => s.id === id) || current; save("etc.last", current.id); renderSessions(); renderChat(); closeDrawer(); }
+function deleteSession(id) {
+  sessions = sessions.filter(s => s.id !== id);
+  if (!sessions.length) newSession(false);
+  if (!sessions.find(s => s.id === current.id)) current = sessions[0];
+  persist(); renderSessions(); renderChat();
+}
+
+function renderSessions() {
+  $("#sessionList").innerHTML = sessions.map(s => `<div class="sess ${s.id === current.id ? "active" : ""}" data-id="${s.id}"><span>${esc(s.title)}</span><i data-del="${s.id}">×</i></div>`).join("");
+}
+function renderChat() {
+  const chat = $("#chat");
+  if (!current.messages.length) {
+    chat.innerHTML = `<div class="empty"><div class="orb">A</div><h1>今天要完成什么？</h1>
+      <p>这是手机独立版：云端填自己的 API，或加载本地 GGUF。它不连电脑、不调用豆包额度。</p>
+      <div class="quick"><button data-q="整理我手机里的一段文字">整理文字</button><button data-q="打开 https://example.com 看看">打开网页</button><button data-q="帮我写一个今天的工作计划">写计划</button><button data-q="记住：我常用端口是 8787">记一件事</button></div></div>`;
+  } else {
+    chat.innerHTML = current.messages.map(m => {
+      const tools = (m.tools || []).map(t => `<div class="tool"><b>${esc(t.name)}</b><span>${esc(t.detail || "")}</span></div>`).join("");
+      if (m.role === "user") return `<div class="msg user"><div class="bubble">${esc(m.content)}</div></div>`;
+      return `<div class="msg assistant"><div class="avatar">A</div><div><div class="bubble">${esc(m.content)}</div>${tools ? `<div class="tools">${tools}</div>` : ""}</div></div>`;
+    }).join("");
+  }
+  if (busy) chat.insertAdjacentHTML("beforeend", `<div class="msg assistant"><div class="avatar">A</div><div class="bubble"><span class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span> <span id="statusText">处理中…</span></span></div></div>`);
+  chat.scrollTop = chat.scrollHeight;
+}
+function addMsg(role, content, tools) {
+  current.messages.push({ role, content, tools: tools || [] });
+  current.updated = now();
+  if (current.title === "新任务" && role === "user") current.title = content.slice(0, 18) || "新任务";
+  persist(); renderSessions(); renderChat();
+}
+
+// ---------- HTTP bridge ----------
+function http(method, url, headers, body) {
+  return new Promise((resolve) => {
+    const a = android();
+    if (!a) { resolve({ status: 0, body: "", error: "不在 Android 环境" }); return; }
+    const id = uid();
+    pendingHttp[id] = resolve;
+    a.httpStart(id, method, url, JSON.stringify(headers || {}), body == null ? "" : body);
+  });
+}
+window.__httpResult = function (id, json) {
+  const cb = pendingHttp[id]; if (!cb) return; delete pendingHttp[id];
+  try { cb(JSON.parse(json)); } catch (e) { cb({ status: 0, body: "", error: String(e) }); }
+};
+window.__modelPicked = function (id, name, path, size, err) {
+  if (err) { toast("导入失败：" + err); return; }
+  settings.localName = name; settings.localPath = path; settings.localLoaded = false; persist(); updateTop(); renderSettings();
+  toast("模型已导入：" + name + " · " + bytes(size));
+};
+window.__localStatus = function (id, ok, err, info) {
+  settings.localLoaded = !!ok; settings.localInfo = info || ""; persist(); updateTop(); renderSettings();
+  if (!ok) toast("加载失败：" + (err || "未知错误"));
+  else toast("本地模型已加载");
+};
+window.__localInfo = function (id, info) { settings.localInfo = info || ""; persist(); renderSettings(); };
+window.__localReply = function (id, text, err) {
+  const cb = pendingLocal[id]; if (!cb) return; delete pendingLocal[id];
+  cb({ text: text || "", error: err || "" });
+};
+
+// ---------- local model ----------
+function loadLocal() {
+  if (!settings.localPath) { toast("先选择 .gguf 模型"); return; }
+  const a = android(); if (!a) { toast("不在 Android 环境"); return; }
+  toast("正在加载，请稍候…");
+  a.loadLocal("load", settings.localPath, Number(settings.localCtx) || 2048, Number(settings.localThreads) || 4);
+}
+function localChat(roles, contents, maxTokens) {
+  return new Promise((resolve) => {
+    const a = android(); if (!a) { resolve({ text: "", error: "不在 Android 环境" }); return; }
+    const id = uid(); pendingLocal[id] = resolve;
+    a.localChat(id, JSON.stringify(roles), JSON.stringify(contents), maxTokens || settings.maxTokens, settings.temperature, 0.9, 40);
+  });
+}
+
+// ---------- memory ----------
+const HL = [0, 0.7, 2, 7, 30, 120];
+function memStrength(m) {
+  const base = m.lastRecallAt || m.createdAt || now();
+  const days = (now() - base) / 86400000;
+  return Math.pow(0.5, days / HL[Math.min(5, Math.max(1, m.importance || 3))]);
+}
+function memSave(text, importance) {
+  text = String(text || "").trim().replace(/^(请)?记住[：:，,]?\s*/, "").replace(/^记一下[：:，,]?\s*/, "");
+  if (!text) return "";
+  const exist = memories.find(m => m.text === text);
+  if (exist) { exist.lastRecallAt = now(); exist.recallCount = (exist.recallCount || 0) + 1; return exist.id; }
+  const m = { id: "m_" + uid(), text: text.slice(0, 800), importance: Math.min(5, Math.max(1, Number(importance) || 3)), createdAt: now(), lastRecallAt: now(), recallCount: 0 };
+  memories.unshift(m); persist(); updateTop(); renderSettings(); return m.id;
+}
+function memSearch(q, limit) {
+  const words = String(q || "").toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 1);
+  return memories.map(m => {
+    const t = m.text.toLowerCase(); let score = memStrength(m) * (0.6 + 0.08 * (m.importance || 3));
+    if (words.length) { let hits = 0; for (const w of words) if (t.includes(w)) hits++; score += hits * 0.6; }
+    return { m, score };
+  }).sort((a, b) => b.score - a.score).slice(0, limit || 8).map(x => { x.m.lastRecallAt = now(); x.m.recallCount = (x.m.recallCount || 0) + 1; return x.m; });
+}
+function memContext(q) {
+  const hit = memSearch(q, 4).filter(m => memStrength(m) > 0.25);
+  if (!hit.length) return "";
+  return "\n\n[长期记忆，可能有用，未必完全准确]\n" + hit.map(m => "- " + m.text).join("\n");
+}
+function observeMemory(text) {
+  if (/^(我叫|我的名字|我喜欢|我的.*是|记住|记一下)/.test(String(text).trim())) memSave(text, 3);
+}
+
+// ---------- tools ----------
+const TOOL_DEFS = [
+  { type: "function", function: { name: "open_url", description: "在手机浏览器打开一个网址", parameters: { type: "object", properties: { url: { type: "string" } }, required: ["url"] } } },
+  { type: "function", function: { name: "list_files", description: "列出应用私有目录里的文件", parameters: { type: "object", properties: {} } } },
+  { type: "function", function: { name: "read_file", description: "读取应用私有目录中的文本文件", parameters: { type: "object", properties: { name: { type: "string" } }, required: ["name"] } } },
+  { type: "function", function: { name: "write_file", description: "把文本写入应用私有目录", parameters: { type: "object", properties: { name: { type: "string" }, content: { type: "string" } }, required: ["name", "content"] } } },
+  { type: "function", function: { name: "http_fetch", description: "用 GET 读取一个网页或接口的文本内容", parameters: { type: "object", properties: { url: { type: "string" } }, required: ["url"] } } },
+  { type: "function", function: { name: "memory_save", description: "把值得长期记住的事实写入记忆", parameters: { type: "object", properties: { text: { type: "string" }, importance: { type: "integer" } }, required: ["text"] } } },
+  { type: "function", function: { name: "memory_search", description: "按关键词搜索长期记忆", parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"] } } },
+  { type: "function", function: { name: "ask_user", description: "当需要用户本人决定时，弹出选择让用户回答", parameters: { type: "object", properties: { question: { type: "string" }, options: { type: "array", items: { type: "string" } } }, required: ["question"] } } },
+  { type: "function", function: { name: "device_info", description: "读取手机型号与 Android 版本", parameters: { type: "object", properties: {} } } },
+  { type: "function", function: { name: "share_text", description: "把文本通过系统分享面板发送出去", parameters: { type: "object", properties: { text: { type: "string" } }, required: ["text"] } } },
+  { type: "function", function: { name: "clipboard_copy", description: "复制文本到剪贴板", parameters: { type: "object", properties: { text: { type: "string" } }, required: ["text"] } } }
+];
+const TOOL_NAMES = TOOL_DEFS.map(t => t.function.name);
+
+async function execTool(name, args) {
+  const a = android();
+  args = args || {};
+  try {
+    switch (name) {
+      case "open_url": return { text: a ? a.openUrl(args.url) : "无 Android 环境", detail: args.url };
+      case "list_files": { const raw = a ? a.listFiles() : "[]"; const arr = JSON.parse(raw); return { text: arr.map(f => f.name + " (" + bytes(f.size) + ")").join("\n") || "目录为空", detail: arr.length + " 个文件" }; }
+      case "read_file": return { text: a ? a.readFile(args.name) : "无 Android 环境", detail: args.name };
+      case "write_file": return { text: a ? a.writeFile(args.name, args.content) : "无 Android 环境", detail: args.name };
+      case "http_fetch": { const r = await http("GET", args.url, {}, null); return { text: (r.body || r.error || "").slice(0, 20000), detail: args.url + " · " + r.status }; }
+      case "memory_save": { const id = memSave(args.text, args.importance); return { text: id ? "已记住" : "内容为空", detail: String(args.text).slice(0, 80) }; }
+      case "memory_search": { const hit = memSearch(args.query, 6); return { text: hit.length ? hit.map(m => "- " + m.text + "（强度 " + memStrength(m).toFixed(2) + "）").join("\n") : "没有找到相关记忆", detail: args.query }; }
+      case "ask_user": { const ans = await askUser(args.question, args.options || []); return { text: ans, detail: String(args.question).slice(0, 60) }; }
+      case "device_info": { const raw = a ? a.deviceInfo() : "{}"; const d = JSON.parse(raw); return { text: "型号：" + d.model + "\n品牌：" + d.brand + "\nAndroid：" + d.android + " (SDK " + d.sdk + ")\nABI：" + d.abi, detail: d.model }; }
+      case "share_text": return { text: a ? a.shareText(args.text) : "无 Android 环境", detail: "分享" };
+      case "clipboard_copy": return { text: a ? a.copyText(args.text) : "无 Android 环境", detail: "剪贴板" };
+      default: return { text: "未知工具：" + name };
+    }
+  } catch (e) { return { text: "工具执行失败：" + e.message }; }
+}
+
+// ---------- ask user ----------
+function askUser(question, options) {
+  return new Promise((resolve) => {
+    const box = $("#askBox");
+    box.innerHTML = `<h3>需要你选择</h3><p>${esc(question)}</p>` +
+      (options && options.length ? options.map((o, i) => `<button data-a="${i}">${esc(o)}</button>`).join("") : `<div class="field"><input id="askInput" placeholder="输入回答"></div><button data-a="input" class="primary">确定</button>`) +
+      `<button class="cancel" data-a="cancel">取消</button>`;
+    $("#ask").classList.add("show");
+    const done = (v) => { $("#ask").classList.remove("show"); resolve(v); };
+    box.querySelectorAll("[data-a]").forEach(b => b.onclick = () => {
+      const k = b.dataset.a;
+      if (k === "cancel") done("用户取消了选择");
+      else if (k === "input") done(($("#askInput").value || "").trim() || "用户未输入");
+      else done(options[Number(k)]);
+    });
+  });
+}
+
+// ---------- agent ----------
+function systemPrompt() {
+  return `你是 agent_etc 手机独立版，一个能真实干活的手机 Agent。作者 ETC。
+你能通过工具读写应用私有文件、打开手机浏览器、用 GET 读取网页、记住长期事实、询问用户选择。你不能操作电脑桌面。
+规则：
+1. 能直接做就做，不要只给建议；需要用户本人决定、涉及支付/登录/验证码/删除时，用 ask_user。
+2. 人机验证、验证码、支付确认必须让用户本人完成，不要尝试绕过。
+3. 回答简洁、说人话，先给结果。
+4. 需要工具时调用工具；不要编造工具结果。${memContext(current ? current.title : "")}`;
+}
+
+function apiUrl() {
+  let base = (settings.baseUrl || "").trim().replace(/\/+$/, "");
+  if (!base) return "";
+  if (base.endsWith("/chat/completions")) return base;
+  return base + "/chat/completions";
+}
+
+async function runCloud(userText) {
+  const url = apiUrl();
+  if (!url || !settings.model) throw new Error("请先在设置里填写 API 地址和模型名");
+  const messages = [{ role: "system", content: systemPrompt() }];
+  for (const m of current.messages) {
+    if (m.role === "user" || m.role === "assistant") messages.push({ role: m.role, content: m.content });
+  }
+  const headers = { "Content-Type": "application/json" };
+  if (settings.apiKey) headers["Authorization"] = "Bearer " + settings.apiKey;
+  const toolsUsed = [];
+  for (let round = 0; round < 4; round++) {
+    const body = JSON.stringify({
+      model: settings.model, messages, tools: TOOL_DEFS, tool_choice: "auto",
+      temperature: Number(settings.temperature) || 0.6, max_tokens: Number(settings.maxTokens) || 2048, stream: false
+    });
+    setStatus(round ? "继续处理工具结果…" : "模型思考中…");
+    const r = await http("POST", url, headers, body);
+    if (r.status === 0) throw new Error(r.error || "网络请求失败");
+    if (r.status >= 400) throw new Error("API " + r.status + "：" + (r.body || "").slice(0, 400));
+    let data; try { data = JSON.parse(r.body); } catch (e) { throw new Error("API 返回不是 JSON：" + r.body.slice(0, 200)); }
+    if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+    const msg = data.choices && data.choices[0] && data.choices[0].message;
+    if (!msg) throw new Error("API 没有返回 message");
+    const calls = msg.tool_calls || [];
+    if (calls.length) {
+      messages.push({ role: "assistant", content: msg.content || "", tool_calls: calls });
+      for (const c of calls) {
+        const name = c.function && c.function.name;
+        let args = {}; try { args = JSON.parse(c.function.arguments || "{}"); } catch (e) {}
+        setStatus("执行工具：" + name);
+        const res = await execTool(name, args);
+        toolsUsed.push({ name, detail: res.detail || "" });
+        messages.push({ role: "tool", tool_call_id: c.id, content: res.text });
+      }
+      continue;
+    }
+    return { text: msg.content || "", tools: toolsUsed };
+  }
+  throw new Error("工具调用轮次过多，已停止");
+}
+
+function localSystem() {
+  return `你是 agent_etc 手机本地版，运行在用户手机上。回答简洁。
+需要工具时只输出一行 JSON：{"tool":"工具名","args":{...}}，不要解释。
+可用工具：open_url(url), list_files(), read_file(name), write_file(name,content), http_fetch(url), memory_save(text,importance), memory_search(query), ask_user(question,options), device_info()。
+人机验证、验证码、支付必须让用户本人完成。${memContext(current ? current.title : "")}`;
+}
+function parseToolJson(text) {
+  const t = String(text || "").trim();
+  const m = t.match(/\{[\s\S]*"tool"[\s\S]*\}/);
+  if (!m) return null;
+  try { const o = JSON.parse(m[0]); return o && o.tool ? o : null; } catch (e) { return null; }
+}
+
+async function runLocal(userText) {
+  if (!settings.localLoaded) throw new Error("本地模型还没有加载，请在设置 → 本地 GGUF 里加载");
+  const roles = ["system"], contents = [localSystem()];
+  for (const m of current.messages) { roles.push(m.role === "user" ? "user" : "assistant"); contents.push(m.content); }
+  const toolsUsed = [];
+  for (let round = 0; round < 3; round++) {
+    setStatus(round ? "本地模型继续处理…" : "本地模型生成中…");
+    const r = await localChat(roles, contents, Number(settings.maxTokens) || 1024);
+    if (r.error) throw new Error(r.error);
+    const call = parseToolJson(r.text);
+    if (!call) return { text: r.text.trim(), tools: toolsUsed };
+    setStatus("执行工具：" + call.tool);
+    const res = await execTool(call.tool, call.args || {});
+    toolsUsed.push({ name: call.tool, detail: res.detail || "" });
+    roles.push("assistant"); contents.push(r.text);
+    roles.push("user"); contents.push("工具 " + call.tool + " 的结果：\n" + res.text + "\n请继续完成，或直接给出最终回答。");
+  }
+  return { text: "本地模型工具轮次过多，已停止", tools: toolsUsed };
+}
+
+function setStatus(t) { const el = $("#statusText"); if (el) el.textContent = t; }
+
+async function send() {
+  if (busy) return;
+  const text = $("#input").value.trim();
+  if (!text) return;
+  $("#input").value = ""; $("#input").style.height = "auto";
+  addMsg("user", text);
+  observeMemory(text);
+  busy = true; renderChat();
+  try {
+    const result = settings.mode === "local" ? await runLocal(text) : await runCloud(text);
+    busy = false;
+    addMsg("assistant", result.text || "（没有返回内容）", result.tools);
+  } catch (e) {
+    busy = false;
+    addMsg("assistant", "出错了：" + e.message);
+  }
+  renderChat(); updateTop();
+}
+
+// ---------- drawer ----------
+function openDrawer() { $("#drawer").classList.add("show"); renderSessions(); }
+function closeDrawer() { $("#drawer").classList.remove("show"); }
+
+// ---------- settings render ----------
+function field(label, id, value, type, placeholder) {
+  return `<div class="field"><label>${label}</label><input id="${id}" type="${type || "text"}" value="${esc(value == null ? "" : value)}" placeholder="${esc(placeholder || "")}"></div>`;
+}
+function renderSettings() {
+  const body = $("#settingsBody");
+  if (currentTab === "model") {
+    body.innerHTML = `<div class="section"><h2>模型服务</h2><p class="desc">填你自己的 OpenAI 兼容接口。不预置豆包地址，也不会消耗豆包额度；密钥只存在本机。</p>
+      <div class="field"><label>运行方式</label><select id="setMode"><option value="cloud" ${settings.mode === "cloud" ? "selected" : ""}>云端 API</option><option value="local" ${settings.mode === "local" ? "selected" : ""}>本地 GGUF</option></select></div>
+      ${field("API 地址（含 /v1）", "setBase", settings.baseUrl, "url", "https://api.deepseek.com/v1")}
+      ${field("API Key", "setKey", settings.apiKey, "password", "sk-…")}
+      ${field("模型名", "setModel", settings.model, "text", "deepseek-chat / qwen2.5:7b")}
+      <div class="row">${field("温度", "setTemp", settings.temperature, "number")}${field("最大 tokens", "setMax", settings.maxTokens, "number")}</div>
+      <button class="btn primary" id="saveModel">保存设置</button>
+      <div class="note">DeepSeek、Kimi、OpenAI、Ollama、LM Studio 等 OpenAI 兼容接口都可以。API Key 只保存在本机 WebView 存储里。</div></div>`;
+  } else if (currentTab === "local") {
+    body.innerHTML = `<div class="section"><h2>本地 GGUF</h2><p class="desc">模型文件会复制到应用私有目录，完全离线推理。首次加载需要几十秒，0.5B–3B 模型在手机上比较稳。</p>
+      <div class="kv"><span>当前模型</span><span>${esc(settings.localName || "未选择")}</span></div>
+      <div class="kv"><span>状态</span><span>${settings.localLoaded ? "已加载" : "未加载"}</span></div>
+      <div class="kv"><span>信息</span><span>${esc(settings.localInfo || "—")}</span></div>
+      <div class="row" style="margin:12px 0"><button class="btn" id="pickModel">选择 .gguf</button><button class="btn primary" id="loadModel" ${settings.localPath ? "" : "disabled"}>加载模型</button></div>
+      <div class="row">${field("上下文", "setCtx", settings.localCtx, "number")}${field("线程", "setThreads", settings.localThreads, "number")}</div>
+      <button class="btn ghost" id="unloadModel">卸载模型</button>
+      <div class="note warn">本地模式速度取决于手机 CPU；如果提示上下文不足，把上下文调小或清空会话。人机验证、支付仍需你本人操作。</div></div>`;
+  } else if (currentTab === "memory") {
+    body.innerHTML = `<div class="section"><h2>记忆</h2><p class="desc">像人一样会记、会忘：重要度高忘得慢，被搜索命中会重新变清晰。只存本机。</p>
+      ${field("记一件事", "memText", "", "text", "例如：我的常用端口是 8787")}
+      <div class="row"><div class="field"><label>重要度</label><select id="memImp"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></div><button class="btn primary" id="memAdd" style="align-self:flex-end;margin-bottom:12px">记住</button></div>
+      ${field("搜索记忆", "memQuery", "", "text", "输入关键词")}
+      <button class="btn" id="memSearch">搜索</button>
+      <div id="memList" style="margin-top:14px">${memories.map(m => `<div class="memitem"><button data-forget="${m.id}">忘记</button><div class="mt">${esc(m.text)}</div><div class="mm"><span>重要度 ${m.importance}/5</span><span>强度 ${memStrength(m).toFixed(2)}</span><span>回想 ${m.recallCount || 0} 次</span></div></div>`).join("") || `<div class="note">还没有记忆。告诉它你的偏好、项目名、常用路径，会慢慢积累。</div>`}</div></div>`;
+  } else if (currentTab === "tools") {
+    body.innerHTML = `<div class="section"><h2>文件与权限</h2><p class="desc">应用只能读写自己的私有目录；模型通过系统文件选择器导入，不需要存储权限。</p>
+      <div class="row" style="margin-bottom:12px"><button class="btn" id="refreshFiles">刷新文件</button><button class="btn" id="pickModel2">选择模型</button></div>
+      <div class="statusline" id="fileList">点刷新查看</div>
+      <div class="note">云端模型可以读网页、打开浏览器、分享文本；不能控制手机其他 App 的界面。需要屏幕操作要单独开无障碍服务，本版没有默认开启。</div></div>`;
+  } else if (currentTab === "about") {
+    body.innerHTML = `<div class="section"><h2>关于</h2><div class="kv"><span>版本</span><span>1.4.0</span></div><div class="kv"><span>作者</span><span>ETC</span></div><div class="kv"><span>签名</span><span>ETC Code Signing</span></div><div class="kv"><span>依赖</span><span>无电脑端依赖</span></div>
+      <div class="row" style="margin-top:14px"><button class="btn" id="checkUpdate">检查更新</button><button class="btn" id="openRepo">打开仓库</button></div>
+      <div class="statusline" id="updateInfo">点检查更新读取 GitHub Release</div>
+      <div class="note">本 App 不预置任何豆包接口，不会消耗豆包额度。云端 API 由你自己填写并承担费用；本地 GGUF 完全离线。</div></div>`;
+  }
+  bindSettings();
+}
+function bindSettings() {
+  const bind = (id, ev, fn) => { const el = $("#" + id); if (el) el[ev] = fn; };
+  bind("setMode", "onchange", e => { settings.mode = e.target.value; persist(); updateTop(); });
+  bind("saveModel", "onclick", () => {
+    settings.baseUrl = ($("#setBase").value || "").trim(); settings.apiKey = ($("#setKey").value || "").trim();
+    settings.model = ($("#setModel").value || "").trim(); settings.temperature = Number($("#setTemp").value) || 0.6;
+    settings.maxTokens = Number($("#setMax").value) || 2048; persist(); updateTop(); toast("已保存");
+  });
+  bind("pickModel", "onclick", () => { if (android()) android().pickModel("pick"); else toast("不在 Android 环境"); });
+  bind("pickModel2", "onclick", () => { if (android()) android().pickModel("pick"); else toast("不在 Android 环境"); });
+  bind("loadModel", "onclick", () => { settings.localCtx = Number($("#setCtx").value) || 2048; settings.localThreads = Number($("#setThreads").value) || 4; persist(); loadLocal(); });
+  bind("unloadModel", "onclick", () => { if (android()) android().unloadLocal(); settings.localLoaded = false; persist(); updateTop(); renderSettings(); toast("已卸载"); });
+  bind("memAdd", "onclick", () => { const t = $("#memText").value; const imp = Number($("#memImp").value); if (memSave(t, imp)) { toast("已记住"); renderSettings(); } });
+  bind("memSearch", "onclick", () => { const q = $("#memQuery").value; const hit = memSearch(q, 10); $("#memList").innerHTML = hit.map(m => `<div class="memitem"><button data-forget="${m.id}">忘记</button><div class="mt">${esc(m.text)}</div><div class="mm"><span>重要度 ${m.importance}/5</span><span>强度 ${memStrength(m).toFixed(2)}</span><span>回想 ${m.recallCount || 0} 次</span></div></div>`).join("") || `<div class="note">没有找到</div>`; bindForgets(); });
+  bind("refreshFiles", "onclick", () => { const a = android(); if (!a) return; try { const arr = JSON.parse(a.listFiles()); $("#fileList").textContent = arr.map(f => f.name + "  " + bytes(f.size)).join("\n") || "目录为空"; } catch (e) { $("#fileList").textContent = "读取失败：" + e.message; } });
+  bind("checkUpdate", "onclick", async () => {
+    $("#updateInfo").textContent = "检查中…";
+    const r = await http("GET", "https://api.github.com/repos/ETQWFD/agent_etc/releases/latest", { "Accept": "application/vnd.github+json" }, null);
+    try { const d = JSON.parse(r.body); $("#updateInfo").textContent = d.tag_name ? ("最新 Release：" + d.tag_name + "\n" + (d.html_url || "")) : ("检查失败：" + (r.error || r.body.slice(0, 100))); } catch (e) { $("#updateInfo").textContent = "检查失败：" + (r.error || ""); }
+  });
+  bind("openRepo", "onclick", () => android() && android().openUrl("https://github.com/ETQWFD/agent_etc"));
+  bindForgets();
+}
+function bindForgets() {
+  document.querySelectorAll("[data-forget]").forEach(b => b.onclick = () => {
+    memories = memories.filter(m => m.id !== b.dataset.forget); persist(); updateTop(); renderSettings();
+  });
+}
+
+function openSettings(tab) { currentTab = tab || "model"; $("#settings").classList.add("show"); document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === currentTab)); renderSettings(); }
+function closeSettings() { $("#settings").classList.remove("show"); persist(); updateTop(); }
+
+// ---------- events ----------
+$("#btnNew").onclick = () => newSession();
+$("#btnHistory").onclick = openDrawer;
+$("#drawer").onclick = (e) => { if (e.target.id === "drawer") closeDrawer(); };
+$("#btnSettings").onclick = () => openSettings("model");
+$("#btnCloseSettings").onclick = closeSettings;
+$("#tabs").onclick = (e) => { const b = e.target.closest("button[data-tab]"); if (!b) return; currentTab = b.dataset.tab; document.querySelectorAll("#tabs button").forEach(x => x.classList.toggle("active", x === b)); renderSettings(); };
+$("#btnSend").onclick = send;
+$("#input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
+$("#input").addEventListener("input", () => { const el = $("#input"); el.style.height = "auto"; el.style.height = Math.min(140, el.scrollHeight) + "px"; });
+$("#chat").addEventListener("click", (e) => { const q = e.target.closest("[data-q]"); if (q) { $("#input").value = q.dataset.q; send(); } });
+$("#sessionList").addEventListener("click", (e) => {
+  const del = e.target.closest("[data-del]"); if (del) { e.stopPropagation(); deleteSession(del.dataset.del); return; }
+  const row = e.target.closest(".sess"); if (row) openSession(row.dataset.id);
+});
+$("#drawer").querySelector(".drawerpanel").addEventListener("click", e => e.stopPropagation());
+
+// init
+renderSessions(); renderChat(); updateTop();
+if (android()) { try { android().toast("agent_etc 手机独立版已就绪"); } catch (e) {} }
+</script>
+</body>
+</html>

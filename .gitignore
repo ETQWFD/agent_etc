@@ -8,3 +8,8 @@ certs/*.csr
 .DS_Store
 
 vendor/
+
+# Android standalone build
+android-standalone/llama.cpp/
+android-standalone/build-android/
+build/
