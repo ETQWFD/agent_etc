@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' etcfile: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' etcfile:" />
+<title>agent_etc</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div id="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark"><span>A</span></div>
+      <div class="brand-text">
+        <div class="brand-name">agent_etc</div>
+        <div class="brand-sub">可自改装桌面 Agent</div>
+      </div>
+    </div>
+
+    <button class="btn-new" id="btnNew">
+      <span class="plus">＋</span><span>新建任务</span>
+      <kbd>Ctrl N</kbd>
+    </button>
+
+    <div class="side-label">任务</div>
+    <div class="session-list" id="sessionList"></div>
+
+    <div class="side-foot">
+      <button data-panel="plugins" class="side-btn"><span class="ico">◫</span>插件</button>
+      <button data-panel="skills" class="side-btn"><span class="ico">◇</span>技能</button>
+      <button data-panel="settings" class="side-btn"><span class="ico">⚙</span>设置</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="crumb">
+        <span class="mode-chip"><i class="mode-dot"></i>办公任务</span>
+        <span class="crumb-title" id="sessionTitle">新任务</span>
+      </div>
+      <div class="top-right">
+        <button class="chip model-chip" id="modelChip" title="切换 / 配置模型服务">未配置模型</button>
+        <div class="dots" id="statusDots">
+          <span class="dot" data-key="model" title="模型"></span>
+          <span class="dot" data-key="browser" title="浏览器"></span>
+          <span class="dot" data-key="local" title="本地模型"></span>
+        </div>
+        <button class="icon-btn" id="btnSettings" title="设置">⚙</button>
+      </div>
+    </header>
+
+    <section class="chat" id="chat">
+      <div class="empty" id="empty">
+        <div class="empty-mark"><span>A</span></div>
+        <div class="empty-title">今天要完成什么？</div>
+        <div class="empty-sub">拆解任务、调用工具、操作浏览器与本地文件，直到交付成品。</div>
+        <div class="suggest" id="suggest">
+          <button data-q="帮我在工作区里整理一份本周的待办清单，输出 Markdown 文件。">整理待办</button>
+          <button data-q="用浏览器打开 https://www.bing.com，搜索今天的科技新闻并总结三条。">浏览器调研</button>
+          <button data-q="读取工作区里的文件，做一份数据分析并在新文件里给出结论。">分析本地文件</button>
+          <button data-q="帮我把这个想法做成一个可运行的单页 HTML：个人效率看板。">写一个页面</button>
+        </div>
+        <div class="empty-foot">工作区：<span id="workspacePath">—</span> <button class="link" id="btnOpenWorkspace">打开</button></div>
+      </div>
+      <div class="messages" id="messages"></div>
+    </section>
+
+    <footer class="composer-wrap">
+      <div class="attachments" id="attachments"></div>
+      <div class="composer" id="composer">
+        <button class="attach" id="btnAttach" title="添加附件">＋</button>
+        <textarea id="input" rows="1" placeholder="描述你要完成的工作，Enter 发送，Shift + Enter 换行"></textarea>
+        <button class="send" id="btnSend" title="发送"><span class="arrow">↑</span></button>
+      </div>
+      <div class="composer-hint">
+        <span id="hintText">工具执行前会请求你的确认</span>
+        <span class="hint-right" id="stepInfo"></span>
+      </div>
+    </footer>
+  </main>
+</div>
+
+<div class="overlay" id="overlay"></div>
+<div class="toasts" id="toasts"></div>
+<script src="app.js"></script>
+</body>
+</html>

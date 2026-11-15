@@ -1,0 +1,8 @@
+{
+  "id": "system-info",
+  "name": "系统信息",
+  "version": "1.0.0",
+  "description": "读取本机系统、CPU、内存、磁盘与网络信息。",
+  "author": "ETC",
+  "main": "index.js"
+}

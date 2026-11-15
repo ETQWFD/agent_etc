@@ -1,0 +1,41 @@
+appId: com.agentetc.app
+productName: agent_etc
+copyright: Copyright © 2026 ETC
+directories:
+  output: dist
+  buildResources: build
+files:
+  - package.json
+  - src/**/*
+  - plugins/**/*
+  - skills/**/*
+asar: true
+compression: normal
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+  icon: build/icon.ico
+  requestedExecutionLevel: asInvoker
+  artifactName: agent_etc-${version}-${arch}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: agent_etc
+  uninstallDisplayName: agent_etc ${version}
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  deleteAppDataOnUninstall: false
+  runAfterFinish: true
+portable:
+  artifactName: agent_etc-${version}-portable.${ext}
+  unpackDirName: agent_etc

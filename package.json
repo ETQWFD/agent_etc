@@ -1,0 +1,24 @@
+{
+  "name": "agent_etc",
+  "version": "1.0.0",
+  "description": "agent_etc — 可自改装的桌面 Agent 工作台：多模型 API、本地 GGUF、插件、浏览器操作",
+  "main": "src/main/main.js",
+  "author": "ETC",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "dist:win": "electron-builder --win --x64",
+    "pack:dir": "electron-builder --win --x64 --dir",
+    "icon": "python3 scripts/make_icon.py",
+    "sign": "bash scripts/sign.sh"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^25.1.8"
+  }
+}

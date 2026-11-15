@@ -1,0 +1,8 @@
+node_modules/
+dist/
+certs/*.key
+certs/*.pfx
+certs/PASSWORD.txt
+certs/*.csr
+*.log
+.DS_Store
