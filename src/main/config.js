@@ -67,6 +67,13 @@ function defaultConfig() {
     workspace: '',
     maxSteps: 24,
     systemExtra: DEFAULT_SYSTEM_EXTRA,
+    qq: {
+      enabled: false,
+      endpoint: 'http://127.0.0.1:3001',
+      token: '',
+      allow: [],
+      selfId: '',
+    },
     plugins: {
       disabled: [],
       mcp: [],

@@ -8,6 +8,9 @@ const crypto = require('crypto');
 const { pathToFileURL } = require('url');
 
 const { ConfigStore } = require('./config');
+const { MemoryStore } = require('./memory');
+const { Marketplace } = require('./marketplace');
+const { QQBridge } = require('./qq');
 const { SessionStore } = require('./sessions');
 const { PluginHost } = require('./plugins');
 const { LocalModelRunner } = require('./llamacpp');
@@ -30,6 +33,9 @@ let win = null;
 let config = null;
 let sessions = null;
 let pluginHost = null;
+let memory = null;
+let marketplace = null;
+let qq = null;
 let localModel = null;
 let agent = null;
 let mobile = null;
@@ -77,11 +83,23 @@ function send(channel, payload) {
 function initServices() {
   config = new ConfigStore();
   sessions = new SessionStore(app.getPath('userData'));
+  memory = new MemoryStore(path.join(app.getPath('userData'), 'memory.json'));
   pluginHost = new PluginHost({
     appRoot: APP_ROOT,
     userDataDir: app.getPath('userData'),
     getConfig: () => config.get(),
     onToolsChanged: () => { if (agent) agent.syncPluginTools(); },
+  });
+  qq = new QQBridge({
+    getConfig: () => config.get(),
+    agent,
+    sessions,
+    onChange: (st) => send('qq:status', st),
+  });
+  marketplace = new Marketplace({
+    getConfig: () => config.get(),
+    pluginHost,
+    userDataDir: app.getPath('userData'),
   });
   localModel = new LocalModelRunner({
     getConfig: () => config.get(),
@@ -93,6 +111,7 @@ function initServices() {
     sessions,
     pluginHost,
     localModel,
+    memory,
     appRoot: APP_ROOT,
     userDataDir: app.getPath('userData'),
     emit: (sessionId, event) => {
@@ -144,7 +163,11 @@ function initServices() {
       }
     },
   });
+  if (qq) qq.agent = agent;
   pluginHost.reloadAll().catch((err) => console.error('[plugins] 初始化失败', err));
+  if (config.get().qq?.enabled && qq) {
+    qq.start().catch((err) => console.error('[qq] 启动失败', err.message));
+  }
   if (config.get().mobile?.enabled) {
     mobile.start({ port: config.get().mobile.port, token: config.get().mobile.token })
       .then((st) => {
@@ -215,7 +238,33 @@ function registerIpc() {
   }));
 
   ipcMain.handle('config:get', () => config.get());
-  ipcMain.handle('config:patch', (_e, patch) => config.patch(patch));
+
+  ipcMain.handle('memory:list', () => memory.all(80));
+  ipcMain.handle('memory:save', (_e, { text, importance }) => {
+    const item = memory.remember(text, { importance, source: 'user' });
+    return item ? { ok: true, id: item.id } : { ok: false, error: '内容为空' };
+  });
+  ipcMain.handle('memory:search', (_e, { query, limit }) => memory.search(query, limit || 10));
+  ipcMain.handle('memory:forget', (_e, id) => ({ ok: memory.forget(id) }));
+
+  ipcMain.handle('plugin:market-search', async (_e, { source, query }) => {
+    try { return await marketplace.search({ source, query }); } catch (err) { return { error: err.message }; }
+  });
+  ipcMain.handle('plugin:market-install', async (_e, entry) => {
+    try { return await marketplace.install(entry); } catch (err) { return { ok: false, error: err.message }; }
+  });
+  ipcMain.handle('config:patch', (_e, patch) => {
+    const next = config.patch(patch);
+    if (patch && Object.prototype.hasOwnProperty.call(patch, 'qq') && qq) {
+      if (next.qq?.enabled) qq.start().catch((err) => console.error('[qq]', err.message));
+      else qq.stop();
+    }
+    return next;
+  });
+  ipcMain.handle('qq:status', () => qq.status);
+  ipcMain.handle('qq:test', () => qq.test());
+  ipcMain.handle('qq:start', async () => { await qq.start(); return qq.status; });
+  ipcMain.handle('qq:stop', () => { qq.stop(); return qq.status; });
 
   ipcMain.handle('provider:save', (_e, provider) => {
     if (!provider.id) {

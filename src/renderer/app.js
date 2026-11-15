@@ -586,8 +586,11 @@ function openSettings(tab = 'providers') {
           ${tabButton('local', '本地 GGUF')}
           ${tabButton('browser', '浏览器')}
           ${tabButton('plugins', '插件')}
+          ${tabButton('market', '插件市场')}
           ${tabButton('skills', '技能')}
+          ${tabButton('memory', '记忆')}
           ${tabButton('mobile', '手机版')}
+          ${tabButton('qq', 'QQ 助手')}
           ${tabButton('permissions', '权限与工作区')}
           ${tabButton('about', '关于')}
         </nav>
@@ -620,8 +623,11 @@ async function renderPanel() {
     case 'local': return renderLocal(panel);
     case 'browser': return renderBrowser(panel);
     case 'plugins': return renderPlugins(panel);
+    case 'market': return renderMarket(panel);
     case 'skills': return renderSkills(panel);
+    case 'memory': return renderMemory(panel);
     case 'mobile': return renderMobile(panel);
+    case 'qq': return renderQQ(panel);
     case 'permissions': return renderPermissions(panel);
     case 'about': return renderAbout(panel);
     default: return renderProviders(panel);
@@ -873,6 +879,64 @@ async function renderBrowser(panel) {
   });
 }
 
+async 
+async function renderMarket(panel) {
+  const cfg = state.config;
+  let source = state.marketSource || 'mcp';
+  panel.innerHTML = `
+    <h3>插件市场</h3>
+    <div class="desc">接 MCP 官方注册表、npm。安装后直接注册成 Agent 工具；自定义源支持返回 JSON 列表的任意地址。</div>
+    <div class="row" style="gap:8px;margin:14px 0 8px">
+      <button class="pill ${source === 'mcp' ? 'on' : ''}" data-src="mcp">MCP 官方</button>
+      <button class="pill ${source === 'npm' ? 'on' : ''}" data-src="npm">npm</button>
+      <button class="pill ${source === 'custom' ? 'on' : ''}" data-src="custom">自定义源</button>
+    </div>
+    ${source === 'custom' ? `<div class="row" style="gap:8px;margin-bottom:8px"><input id="marketUrl" placeholder="https://example.com/plugins.json" value="${esc(cfg.plugins?.marketplaceUrl || '')}" style="flex:1"/><button class="btn" id="marketUrlSave">保存源</button></div>` : ''}
+    <div class="row" style="gap:8px;margin-bottom:12px">
+      <input id="marketQuery" placeholder="搜插件，例如 browser / filesystem / memory" style="flex:1"/>
+      <button class="btn primary" id="marketGo">搜索</button>
+    </div>
+    <div id="marketList"><div class="hintbox">点「搜索」从官方注册表拉取可安装的 MCP 插件。</div></div>`;
+  const draw = (items) => {
+    const box = panel.querySelector('#marketList');
+    if (items.error) { box.innerHTML = `<div class="hintbox">${esc(items.error)}</div>`; return; }
+    if (!items.length) { box.innerHTML = '<div class="hintbox">没有找到可安装条目。</div>'; return; }
+    box.innerHTML = items.map((it, i) => `
+      <div class="list-line">
+        <div class="grow"><div class="t">${esc(it.name)} <span class="badge">${esc(it.source || '')}</span></div>
+          <div class="d">${esc(it.description || '')}</div>
+          <div class="d">${esc(it.package || it.url || '')}${it.version ? ' · ' + esc(it.version) : ''}</div></div>
+        <button class="btn sm primary" data-install="${i}">安装</button>
+      </div>`).join('');
+    box.querySelectorAll('[data-install]').forEach((b) => b.addEventListener('click', async () => {
+      const it = items[Number(b.dataset.install)];
+      b.disabled = true; b.textContent = '安装中';
+      const res = await etc.plugins.marketInstall(it);
+      if (res && res.ok) toast('已安装，正在连接…', 'ok');
+      else toast('安装失败：' + (res?.error || '未知错误'), 'err');
+      b.textContent = res && res.ok ? '已安装' : '重试'; b.disabled = false;
+    }));
+  };
+  const go = async () => {
+    const q = panel.querySelector('#marketQuery').value.trim();
+    panel.querySelector('#marketGo').disabled = true;
+    draw(await etc.plugins.marketSearch(source, q));
+    panel.querySelector('#marketGo').disabled = false;
+  };
+  panel.querySelector('#marketGo').addEventListener('click', go);
+  panel.querySelectorAll('[data-src]').forEach((b) => b.addEventListener('click', () => {
+    source = b.dataset.src; state.marketSource = source; renderMarket(panel);
+  }));
+  const save = panel.querySelector('#marketUrlSave');
+  if (save) save.addEventListener('click', async () => {
+    const url = panel.querySelector('#marketUrl').value.trim();
+    const next = { ...state.config, plugins: { ...(state.config.plugins || {}), marketplaceUrl: url } };
+    await etc.config.patch({ plugins: next.plugins });
+    state.config = await etc.config.get();
+    toast('市场源已保存', 'ok');
+  });
+}
+
 async function renderPlugins(panel) {
   const list = await etc.plugins.list();
   state.pluginList = list;
@@ -1001,6 +1065,57 @@ async function renderSkills(panel) {
   });
 }
 
+
+async function renderMemory(panel) {
+  let items = [];
+  try { items = await etc.memory.list(); } catch (_) { items = []; }
+  panel.innerHTML = `
+    <h3>记忆</h3>
+    <div class="desc">像人一样会记、会忘：重要的事忘得慢，被再次提起会重新变清晰。存储在本机用户数据目录，不上传。</div>
+    <div class="row" style="gap:8px;margin:16px 0 6px">
+      <input id="memText" placeholder="记一件以后有用的事，例如：我的项目叫 agent_etc" style="flex:1" />
+      <select id="memImp" style="width:110px">
+        <option value="3">重要度 3</option>
+        <option value="4">重要度 4</option>
+        <option value="5">重要度 5</option>
+      </select>
+      <button class="btn primary" id="memAdd">记住</button>
+    </div>
+    <div class="row" style="gap:8px;margin-bottom:12px">
+      <input id="memQuery" placeholder="搜索记忆…" style="flex:1" />
+      <button class="btn" id="memSearch">搜索</button>
+    </div>
+    <div id="memList"></div>`;
+  const draw = (list) => {
+    const box = panel.querySelector('#memList');
+    if (!list.length) { box.innerHTML = '<div class="hintbox">还没有记忆。你告诉它的长期偏好、项目名、常用路径会慢慢积累在这里。</div>'; return; }
+    box.innerHTML = list.map((m) => `
+      <div class="list-line">
+        <div class="grow"><div class="t">${esc(m.text)}</div>
+          <div class="d">重要度 ${m.importance}/5 · 强度 ${m.strength} · ${m.ageDays} 天前 · 回想 ${m.recallCount || 0} 次</div></div>
+        <button class="btn sm" data-forget="${esc(m.id)}">忘记</button>
+      </div>`).join('');
+    box.querySelectorAll('[data-forget]').forEach((b) => b.addEventListener('click', async () => {
+      await etc.memory.forget(b.dataset.forget);
+      toast('已忘记', 'ok');
+      draw(await etc.memory.list());
+    }));
+  };
+  draw(items);
+  panel.querySelector('#memAdd').addEventListener('click', async () => {
+    const text = panel.querySelector('#memText').value.trim();
+    if (!text) return;
+    await etc.memory.save(text, Number(panel.querySelector('#memImp').value));
+    panel.querySelector('#memText').value = '';
+    toast('记住了', 'ok');
+    draw(await etc.memory.list());
+  });
+  panel.querySelector('#memSearch').addEventListener('click', async () => {
+    const q = panel.querySelector('#memQuery').value.trim();
+    draw(q ? await etc.memory.search(q, 20) : await etc.memory.list());
+  });
+}
+
 function renderPermissions(panel) {
   const cfg = state.config;
   const kinds = [
@@ -1058,6 +1173,62 @@ function renderPermissions(panel) {
     toast('已保存', 'ok');
     renderTopbar();
   });
+}
+
+
+async function renderQQ(panel) {
+  const cfg = state.config.qq || {};
+  let st = { state: 'stopped', error: '' };
+  try { st = await etc.qq.status(); } catch (_) { /* ignore */ }
+  panel.innerHTML = `
+    <h3>QQ 助手</h3>
+    <div class="desc">让手机小号在 QQ 上和你聊天、干活。本应用不保存 QQ 密码，也不代你扫码：扫码登录由你本机的 OneBot 网关（NapCat / LLOneBot）完成，这里只连它的 HTTP/WS 接口。</div>
+    <div class="hintbox" style="margin:12px 0">
+      1. 在电脑上装并登录 NapCat / LLOneBot，手机小号扫码；<br>
+      2. 打开它的 HTTP 服务与 WebSocket（默认 3001），设置 access token；<br>
+      3. 把地址和 token 填到下面，保存并连接；<br>
+      4. 在 QQ 上私聊这个小号，它会用当前配置的模型/本地 GGUF 回复，并可以调用工具工作。
+    </div>
+    <div class="list-line"><div class="grow"><div class="t">OneBot HTTP 地址</div></div><input id="qqEndpoint" value="${esc(cfg.endpoint || 'http://127.0.0.1:3001')}" style="width:320px"/></div>
+    <div class="list-line"><div class="grow"><div class="t">Access Token</div></div><input id="qqToken" value="${esc(cfg.token || '')}" style="width:320px"/></div>
+    <div class="list-line"><div class="grow"><div class="t">允许的 QQ 号</div><div class="d">留空表示所有人都能私聊；多个用逗号分隔</div></div><input id="qqAllow" value="${esc((cfg.allow || []).join(','))}" style="width:320px"/></div>
+    <div class="list-line"><div class="grow"><div class="t">启用 QQ 助手</div><div class="d">保存后自动连接；断线每 5 秒重连</div></div>
+      <button class="pill ${cfg.enabled ? 'on' : ''}" id="qqToggle">${cfg.enabled ? '已启用' : '未启用'}</button></div>
+    <div class="row" style="gap:8px;margin-top:12px">
+      <button class="btn primary" id="qqSave">保存并连接</button>
+      <button class="btn" id="qqTest">测试网关</button>
+      <button class="btn" id="qqStop">断开</button>
+    </div>
+    <div id="qqStatus" class="hintbox" style="margin-top:12px">状态：${esc(st.state || 'stopped')}${st.selfId ? ' · 机器人 QQ ' + esc(st.selfId) : ''}${st.error ? ' · ' + esc(st.error) : ''}</div>`;
+  let enabled = !!cfg.enabled;
+  const toggle = panel.querySelector('#qqToggle');
+  toggle.addEventListener('click', () => {
+    enabled = !enabled;
+    toggle.classList.toggle('on', enabled);
+    toggle.textContent = enabled ? '已启用' : '未启用';
+  });
+  const collect = () => ({
+    ...cfg,
+    endpoint: panel.querySelector('#qqEndpoint').value.trim(),
+    token: panel.querySelector('#qqToken').value.trim(),
+    allow: panel.querySelector('#qqAllow').value.split(/[,，\s]+/).map((x) => x.trim()).filter(Boolean),
+    enabled,
+  });
+  panel.querySelector('#qqSave').addEventListener('click', async () => {
+    await etc.config.patch({ qq: collect() });
+    state.config = await etc.config.get();
+    if (enabled) await etc.qq.start();
+    else await etc.qq.stop();
+    toast(enabled ? '已保存，正在连接 QQ 网关' : '已保存，QQ 助手关闭', 'ok');
+  });
+  panel.querySelector('#qqTest').addEventListener('click', async () => {
+    await etc.config.patch({ qq: collect() });
+    const r = await etc.qq.test();
+    panel.querySelector('#qqStatus').textContent = r.ok
+      ? `网关正常 · 机器人 QQ ${r.selfId || '未知'} ${r.nickname ? '· ' + r.nickname : ''}`
+      : `网关连接失败：${r.error}`;
+  });
+  panel.querySelector('#qqStop').addEventListener('click', async () => { await etc.qq.stop(); toast('已断开', 'ok'); });
 }
 
 function renderMobile(panel) {

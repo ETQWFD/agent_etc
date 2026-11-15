@@ -360,3 +360,10 @@ body.win .crumb { padding-left: 2px; }
   .suggest { grid-template-columns: 1fr; }
 }
 .badge.warn { color: #ffd79a; border-color: rgba(255,196,92,.4); background: rgba(255,196,92,.08); }
+
+.settings input, .settings select, .settings textarea {
+  background: #141419; color: var(--text); border: 1px solid #2a2a33;
+  border-radius: 9px; padding: 9px 11px; font-size: 12.5px; outline: none;
+}
+.settings input:focus, .settings select:focus { border-color: var(--accent); }
+.settings select { appearance: none; }

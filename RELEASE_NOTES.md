@@ -1,47 +1,36 @@
-# agent_etc 1.2.0
+# agent_etc 1.3.0
 
 作者：ETC · 许可证：MIT
 
-## 这次新增
+## 记忆：会记、会忘、会重新想起
+- 每条记忆带重要度（1–5）与强度；强度按半衰期指数衰减：重要度越高忘得越慢（约 0.7 天 / 2 天 / 7 天 / 30 天 / 120 天）。
+- 被搜索命中会“回想”，强度回升；低强度不会立即删除，只排到后面。
+- 自动从“我叫… / 我喜欢… / 记住…”这类话里提取长期事实；也可以让模型显式调用 `memory_save`。
+- 设置里新增「记忆」页：可添加、搜索、查看强度与年龄、单条忘记。
+- 记忆只存在本机 `userData/memory.json`，不上传。
 
-### 自带模型引擎，不再让你自己找 llama.cpp
-安装包内置 llama.cpp `b12405` Windows CPU x64 运行时（`llama-server.exe` + `ggml-*.dll`），落在
-`resources/engines/llama-win`。启动本地 GGUF 时自动探测这个内置引擎，选好 `.gguf` 就能跑；
-不需要联网下载引擎，也不需要另装 Visual C++ 运行库。
+## 插件市场：真的能装
+- 新增「插件市场」：接 MCP 官方注册表（registry.modelcontextprotocol.io）与 npm。
+- 搜到带 npm 包的 MCP 服务可直接安装，注册成 Agent 工具（用 `npx -y <package>` 启动）。
+- 支持自定义 JSON 市场源；原生插件可从 GitHub zip 安装（自动找 `plugin.json`）。
+- 说明：豆包工作模式与 DeepSeek Harness 的官方插件市场没有公开安装 API，本市场不以“官方”名义伪装；若你有对方导出的 JSON 源地址，填到「自定义源」即可接入。
 
-之前你遇到的 `llm_demo.exe` 报错（`config path is --model`、`Unable to open llm_config file`）
-是 MNN demo 的用法不兼容 GGUF。现在选到 MNN 会直接说明原因，并引导改用内置的 llama-server。
+## QQ 助手
+- 新增「QQ 助手」设置页：填 OneBot HTTP 地址与 access token，连上后私聊小号即可让 Agent 回复、调用工具干活。
+- 不在本应用里收集 QQ 密码、不代扫码；扫码登录由你本机的 NapCat / LLOneBot 完成，本应用只连它的接口。
+- 支持允许 QQ 号白名单、断线 5 秒重连、网关测试。
 
-### 屏幕视觉 + 精准点击（“眼睛”和“手”）
-- `screen_capture`：截取整个屏幕（实测 1920×1080），保存到工作区 `screenshots/`；
-  使用视觉模型（GPT-4o / Claude / Qwen-VL 等）时，截图会自动作为图片送给模型。
-- `screen_click` / `screen_type` / `screen_key`：按屏幕像素坐标真实点击、输入、按快捷键。
-  Windows 下走 PowerShell + user32，不依赖原生模块。
-- 所有鼠标键盘操作默认需要你在弹窗里点“允许这一次”，可在设置里改。
+## Android APK
+- 新增 Android WebView 壳 `agent_etc-1.3.0-android.apk`：手机与电脑同一 Wi-Fi，填电脑端「手机版」地址与 token 即可用。
+- 使用 ETC 代码签名证书签名（PKCS12），`apksigner verify` 通过。
 
-### 本机文件检索
-- `fs_drives`：列出磁盘与剩余空间；
-- `fs_search`：按文件名关键词递归搜索，支持根目录、扩展名、最大条数；默认 12 秒超时、最多 60 条，
-  不会把整块磁盘扫到卡死。
+## 人机验证边界
+- 不提供自动完成验证码 / 人机验证的能力：给“眼睛和手”去点验证码仍然是代过验证，不做。
+- 检测到验证码时停止自动操作，给出明确提示，由用户本人完成；其余桌面视觉、精确定位、点击、输入不受影响。
 
-### 需要你拍板时会弹选择
-- 新增 `ask_user` 工具：模型遇到多方案、缺关键信息时弹窗列出 2–4 个选项；
-- 桌面端与手机版都能选，选完继续执行；2 分钟不选会返回“用户未选择”。
-
-### 人机验证
-检测到验证码 / 人机验证时立即停止自动操作，提示需要你本人完成，**不做绕过**。
-
-### 修复与优化
-- 修复截图 base64 被写进会话导致会话文件膨胀的问题，只在当轮上下文里传图；
-- 关于页版本号改为动态读取，不再写死；作者 ETC、检查更新保持可用；
-- 新增桌面控制权限项；会话、工具卡渲染做了防御处理。
-
-## 打包与签名
-- Windows 安装包与便携版均由 electron-builder 生成；
-- 图标、版本信息由 `scripts/after-pack.js`（纯 JS，resedit）写入，不依赖 Wine 的 rcedit；
-- 产物使用 ETC 代码签名证书签名，可用随包的 `ETC-Root.crt` 验证。
-
-## 已知边界
-- 内置引擎是 Windows x64 CPU 版；Linux 版请自行编译 llama-server。
-- 屏幕点击使用绝对坐标，缩放/多显示器场景请先 `screen_capture` 确认位置。
-- 人机验证只做检测与转人工，不提供自动过验证码能力。
+## 沿用 1.2.0
+- 内置 llama.cpp b12405 Windows CPU x64 引擎；
+- 屏幕截图 + 鼠标键盘控制（默认需审批）；
+- `fs_search` / `fs_drives` 文件检索；
+- `ask_user` 桌面/手机双端选择弹窗；
+- ETC 证书签名与校验和。

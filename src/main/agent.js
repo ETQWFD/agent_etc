@@ -7,13 +7,14 @@ const { chat } = require('./providers');
 const { ToolRegistry, registerCoreTools } = require('./tools');
 const { BrowserManager, registerBrowserTools } = require('./tools/browser');
 const { registerDesktopTools } = require('./tools/desktop');
+const { registerMemoryTools } = require('./memory');
 const { SkillStore } = require('./skills');
 
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp']);
 const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.bmp': 'image/bmp' };
 
 class Agent {
-  constructor({ config, sessions, pluginHost, localModel, emit, requestApproval, askUser, appRoot, userDataDir }) {
+  constructor({ config, sessions, pluginHost, localModel, memory, emit, requestApproval, askUser, appRoot, userDataDir }) {
     this.config = config;
     this.sessions = sessions;
     this.pluginHost = pluginHost;
@@ -21,6 +22,7 @@ class Agent {
     this.emit = emit;
     this.requestApproval = requestApproval;
     this.askUser = askUser;
+    this.memory = memory || null;
     this.appRoot = appRoot;
     this.userDataDir = userDataDir;
     this.skills = new SkillStore({
@@ -35,6 +37,7 @@ class Agent {
     registerCoreTools(this.registry, { getConfig: () => this.config.get() });
     registerBrowserTools(this.registry, this.browser, () => this.config.get().workspace);
     registerDesktopTools(this.registry, { getWorkspace: () => this.config.get().workspace });
+    if (this.memory) registerMemoryTools(this.registry, this.memory);
     this.syncPluginTools();
   }
 
@@ -94,6 +97,7 @@ class Agent {
       '6. 需要用户拍板时调用 ask_user 弹选项，不要替用户猜；用户拒绝的操作要换方案。',
       '7. 看桌面用 screen_capture，确认坐标后再 screen_click；找文件用 fs_search / fs_drives。',
       '8. 遇到人机验证 / 验证码 / CAPTCHA：立即停止自动操作，说明需要用户本人完成，绝不尝试绕过。',
+      '9. 记忆：用户告诉你长期偏好/事实时用 memory_save 记下；需要回忆时用 memory_search；用户要求忘记才用 memory_forget。记忆会随时间变淡，别把旧记忆当成绝对事实。',
       '',
       cfg.systemExtra ? `# 附加设定\n${cfg.systemExtra}` : '',
       skills ? `# 已启用的技能\n${skills}` : '',
@@ -165,6 +169,9 @@ class Agent {
       throw new Error('请先在「设置 → 模型服务」里填写 API Key');
     }
 
+    if (this.memory && text) {
+      try { this.memory.observe(text); } catch (_) { /* ignore */ }
+    }
     this.abort = new AbortController();
     const signal = this.abort.signal;
     const sid = session.id;
@@ -180,7 +187,8 @@ class Agent {
     const tools = this.registry.schemaForModel();
     const visionNotes = [];
     const visionOk = supportsVision(provider);
-    const system = { role: 'system', content: this.buildSystemPrompt() };
+    const memoryCtx = this.memory ? this.memory.contextFor(text) : '';
+    const system = { role: 'system', content: this.buildSystemPrompt() + memoryCtx };
     let step = 0;
     const maxSteps = Math.max(4, Number(this.config.get().maxSteps) || 24);
 

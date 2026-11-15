@@ -34,6 +34,7 @@ const server = http.createServer((req, res) => {
       const t = String(userText);
       if (t.includes('屏幕')) { name = 'screen_capture'; }
       else if (t.includes('选择')) { name = 'ask_user'; args = { question: '你希望用哪种方式继续？', options: ['直接开始', '先看方案', '取消'] }; }
+      else if (t.includes('记住')) { name = 'memory_save'; args = { text: t.replace(/^.*?记住[：:，,]?\s*/, '').slice(0, 120), importance: 4 }; }
       else if (t.includes('命令')) { name = 'shell_run'; args = { command: 'echo hello from agent_etc' }; }
       send({ ...base, choices: [{ index: 0, delta: { role: 'assistant', content: '' } }] });
       send({

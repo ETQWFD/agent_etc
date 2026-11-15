@@ -20,6 +20,12 @@ contextBridge.exposeInMainWorld('etc', {
     activate: (id) => ipcRenderer.invoke('provider:activate', id),
     test: (p) => ipcRenderer.invoke('provider:test', p),
   },
+  memory: {
+    list: () => ipcRenderer.invoke('memory:list'),
+    save: (text, importance) => ipcRenderer.invoke('memory:save', { text, importance }),
+    search: (query, limit) => ipcRenderer.invoke('memory:search', { query, limit }),
+    forget: (id) => ipcRenderer.invoke('memory:forget', id),
+  },
   sessions: {
     list: () => ipcRenderer.invoke('session:list'),
     get: (id) => ipcRenderer.invoke('session:get', id),
@@ -37,6 +43,8 @@ contextBridge.exposeInMainWorld('etc', {
     install: () => ipcRenderer.invoke('plugin:install'),
     uninstall: (id) => ipcRenderer.invoke('plugin:uninstall', id),
     addMcp: (server) => ipcRenderer.invoke('plugin:add-mcp', server),
+    marketSearch: (source, query) => ipcRenderer.invoke('plugin:market-search', { source, query }),
+    marketInstall: (entry) => ipcRenderer.invoke('plugin:market-install', entry),
   },
   skills: {
     list: () => ipcRenderer.invoke('skill:list'),
@@ -51,6 +59,13 @@ contextBridge.exposeInMainWorld('etc', {
     status: () => ipcRenderer.invoke('browser:status'),
     launch: () => ipcRenderer.invoke('browser:launch'),
     stop: () => ipcRenderer.invoke('browser:stop'),
+  },
+  qq: {
+    status: () => ipcRenderer.invoke('qq:status'),
+    test: () => ipcRenderer.invoke('qq:test'),
+    start: () => ipcRenderer.invoke('qq:start'),
+    stop: () => ipcRenderer.invoke('qq:stop'),
+    onStatus: on('qq:status'),
   },
   localmodel: {
     status: () => ipcRenderer.invoke('localmodel:status'),

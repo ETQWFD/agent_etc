@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>连接 agent_etc</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#0b0b0d;color:#e8e8ef;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+.wrap{padding:28px 20px;max-width:560px;margin:0 auto}.logo{width:56px;height:56px;border-radius:14px;background:#111116;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:22px;color:#fff;border:1px solid #24242c}
+h1{font-size:20px;margin:18px 0 6px}p{color:#9b9ba8;font-size:13px;line-height:1.65}label{display:block;font-size:12px;color:#c9c9d4;margin:18px 0 6px}
+input{width:100%;padding:13px 14px;border-radius:10px;border:1px solid #2a2a33;background:#141419;color:#fff;font-size:14px;outline:none}
+input:focus{border-color:#7ce3bb}button{width:100%;margin-top:20px;padding:14px;border:0;border-radius:10px;background:#7ce3bb;color:#06110c;font-size:15px;font-weight:650}
+.note{margin-top:16px;padding:12px;border:1px solid #26262e;border-radius:10px;color:#8f8f9d;font-size:12px;line-height:1.6}
+.ok{color:#7ce3bb}
+</style></head><body><div class="wrap">
+<div class="logo">A</div>
+<h1>连接你的 agent_etc</h1>
+<p>手机和电脑要在同一个 Wi-Fi。电脑端打开「设置 → 手机版」，把显示的地址和访问令牌填到下面。</p>
+<label>电脑地址</label><input id="url" placeholder="http://192.168.1.10:8787" />
+<label>访问令牌</label><input id="token" placeholder="设置页里的 token" />
+<button onclick="save()">保存并连接</button>
+<div class="note" id="note">扫码登录、人机验证都由你本人完成；本应用只连接你自己电脑上的 Agent。</div>
+<script>
+function save(){
+  const url=document.getElementById('url').value.trim().replace(/\/+$/,'');
+  const token=document.getElementById('token').value.trim();
+  if(!/^https?:\/\//.test(url)){document.getElementById('note').textContent='地址要以 http:// 开头';return}
+  if(window.AndroidHost&&AndroidHost.save){AndroidHost.save(url,token);document.getElementById('note').className='note ok';document.getElementById('note').textContent='已保存，正在连接…';}
+  else document.getElementById('note').textContent='请在 agent_etc App 内打开本页。';
+}
+</script></div></body></html>
