@@ -689,6 +689,9 @@ function renderSettings() {
   if (currentTab === "model") {
     body.innerHTML = `<div class="section"><h2>模型服务</h2><p class="desc">填你自己的 OpenAI 兼容接口。密钥只存在本机，请求只发往你填写的地址。</p>
       <div class="field"><label>运行方式</label><select id="setMode"><option value="cloud" ${settings.mode === "cloud" ? "selected" : ""}>云端 API</option><option value="local" ${settings.mode === "local" ? "selected" : ""}>本地 GGUF</option></select></div>
+      <div class="field"><label>工作模式</label><select id="setWork">
+        ${Object.keys(MODES).map(k => `<option value="${k}" ${settings.workMode === k ? "selected" : ""}>${MODES[k].name} · ${MODES[k].desc}</option>`).join("")}
+      </select></div>
       ${field("API 地址（含 /v1）", "setBase", settings.baseUrl, "url", "https://api.deepseek.com/v1")}
       ${field("API Key", "setKey", settings.apiKey, "password", "sk-…")}
       ${field("模型名", "setModel", settings.model, "text", "deepseek-chat / qwen2.5:7b")}
@@ -758,6 +761,7 @@ function renderSettings() {
 function bindSettings() {
   const bind = (id, ev, fn) => { const el = $("#" + id); if (el) el[ev] = fn; };
   bind("setMode", "onchange", e => { settings.mode = e.target.value; persist(); updateTop(); });
+  bind("setWork", "onchange", e => { settings.workMode = e.target.value; persist(); updateTop(); toast("已切换到" + modeOf().name + "模式"); });
   bind("saveModel", "onclick", () => {
     settings.baseUrl = ($("#setBase").value || "").trim(); settings.apiKey = ($("#setKey").value || "").trim();
     settings.model = ($("#setModel").value || "").trim(); settings.temperature = Number($("#setTemp").value) || 0.6;
