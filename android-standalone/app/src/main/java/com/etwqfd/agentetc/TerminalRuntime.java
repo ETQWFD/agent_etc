@@ -43,21 +43,57 @@ public final class TerminalRuntime {
             if (!mark.exists() || !bash.exists() || !librariesReady(prefix)) {
                 extract(ctx, prefix);
                 createLinks(prefix);
+                repairLibraries(ctx, prefix);
                 try (FileOutputStream fos = new FileOutputStream(mark)) {
                     fos.write("termux-arm-v0.119.0-beta.3\n".getBytes(StandardCharsets.UTF_8));
                 }
             }
             createLinks(prefix);
+            repairLibraries(ctx, prefix);
             new File(prefix, "home").mkdirs();
             new File(prefix, "tmp").mkdirs();
-            ready = bash.exists();
-            if (!ready) lastError = "bootstrap 已解压，但未找到 bash";
+            ready = bash.exists() && librariesReady(prefix);
+            if (!ready) lastError = "bootstrap 已解压，但缺少运行库或 bash；请重新安装/清除应用数据后再试";
         } catch (Throwable e) {
             lastError = e.getClass().getSimpleName() + ": " + e.getMessage();
             ready = false;
         } finally {
             extracting = false;
         }
+    }
+
+    /**
+     * ZIP 解压偶尔会在覆盖安装/系统清理后留下空文件；按条目精确重取三个关键库。
+     * 若私有 lib 目录仍不可写，bash 还会从 nativeLibraryDir 兜底加载。
+     */
+    private static void repairLibraries(Context ctx, File prefix) {
+        String[] need = {"lib/libandroid-support.so", "lib/libreadline.so.8.2", "lib/libiconv.so"};
+        boolean missing = false;
+        for (String n : need) {
+            File f = new File(prefix, n);
+            if (!f.isFile() || f.length() <= 0) { missing = true; break; }
+        }
+        if (!missing) return;
+        try (InputStream in = ctx.getAssets().open(ASSET, AssetManager.ACCESS_STREAMING);
+             ZipInputStream zis = new ZipInputStream(in)) {
+            ZipEntry e; byte[] buf = new byte[8192];
+            while ((e = zis.getNextEntry()) != null) {
+                String name = e.getName();
+                if (name == null) continue;
+                if (name.startsWith("./")) name = name.substring(2);
+                boolean wanted = false;
+                for (String n : need) if (n.equals(name)) { wanted = true; break; }
+                if (!wanted) continue;
+                File out = new File(prefix, name);
+                File parent = out.getParentFile();
+                if (parent != null) parent.mkdirs();
+                try (OutputStream fos = new FileOutputStream(out)) {
+                    int n;
+                    while ((n = zis.read(buf)) > 0) fos.write(buf, 0, n);
+                }
+                out.setExecutable(true, false);
+            }
+        } catch (Throwable ignored) {}
     }
 
     private static boolean librariesReady(File prefix) {
@@ -163,10 +199,14 @@ public final class TerminalRuntime {
                 pb.environment().put("LD_LIBRARY_PATH", lp.toString());
                 // Termux 的 bash 依赖 libandroid-support/readline/iconv；显式预加载，
                 // 即使某些 ROM 忽略 LD_LIBRARY_PATH 也能链接成功。
-                String preload = new File(prefix, "lib/libandroid-support.so").getAbsolutePath();
-                if (new File(prefix, "lib/libreadline.so.8").isFile()) preload += ":" + new File(prefix, "lib/libreadline.so.8").getAbsolutePath();
-                if (new File(prefix, "lib/libiconv.so").isFile()) preload += ":" + new File(prefix, "lib/libiconv.so").getAbsolutePath();
-                pb.environment().put("LD_PRELOAD", preload);
+                String preload = "";
+                File support = new File(prefix, "lib/libandroid-support.so");
+                if (support.isFile() && support.length() > 0) preload = support.getAbsolutePath();
+                File rl = new File(prefix, "lib/libreadline.so.8");
+                if (rl.isFile()) preload += (preload.isEmpty() ? "" : ":") + rl.getAbsolutePath();
+                File iconv = new File(prefix, "lib/libiconv.so");
+                if (iconv.isFile()) preload += (preload.isEmpty() ? "" : ":") + iconv.getAbsolutePath();
+                if (!preload.isEmpty()) pb.environment().put("LD_PRELOAD", preload);
                 pb.environment().put("PATH", new File(prefix, "bin").getAbsolutePath() + ":/system/bin:/system/xbin:/vendor/bin");
                 pb.environment().put("TERM", "xterm-256color");
                 pb.environment().put("LANG", "C.UTF-8");

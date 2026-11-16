@@ -55,7 +55,15 @@ cp "$OUT/base.apk" "$OUT/unsigned.apk"
 mkdir -p "$OUT/lib/arm64-v8a" "$OUT/lib/armeabi-v7a"
 cp "$SO" "$OUT/lib/arm64-v8a/libagentllama.so"
 cp "$SO_V7" "$OUT/lib/armeabi-v7a/libagentllama.so"
-( cd "$OUT" && zip -q -0 unsigned.apk lib/arm64-v8a/libagentllama.so lib/armeabi-v7a/libagentllama.so )
+# 把 Termux 关键 32 位运行库同时放进 nativeLibraryDir 作为兜底，
+# 防止私有 lib 目录被覆盖安装/系统清理后出现 not found。
+TMP_LIB="$OUT/termux-libs"; mkdir -p "$TMP_LIB"
+for n in libandroid-support.so libiconv.so libreadline.so.8.2; do
+  unzip -p "$APP/app/src/main/assets/termux-arm.zip" "lib/$n" > "$TMP_LIB/$n"
+done
+cp "$TMP_LIB/libandroid-support.so" "$OUT/lib/armeabi-v7a/libandroid-support.so"
+cp "$TMP_LIB/libiconv.so" "$OUT/lib/armeabi-v7a/libiconv.so"
+( cd "$OUT" && zip -q -0 unsigned.apk lib/arm64-v8a/libagentllama.so lib/armeabi-v7a/libagentllama.so lib/armeabi-v7a/libandroid-support.so lib/armeabi-v7a/libiconv.so )
 
 # 4. align + sign
 "$BT/zipalign" -f 4 "$OUT/unsigned.apk" "$OUT/aligned.apk"
@@ -63,6 +71,6 @@ cp "$SO_V7" "$OUT/lib/armeabi-v7a/libagentllama.so"
   --ks "$ROOT/certs/ETC-CodeSigning.pfx" --ks-type PKCS12 \
   --ks-pass pass:ETC2026-agent-etc --key-pass pass:ETC2026-agent-etc \
   --ks-key-alias "etc code signing" \
-  --out "$ROOT/dist/agent_etc-1.6.13-android.apk" "$OUT/aligned.apk"
-"$BT/apksigner" verify --print-certs "$ROOT/dist/agent_etc-1.6.13-android.apk" | head -4
-ls -lh "$ROOT/dist/agent_etc-1.6.13-android.apk"
+  --out "$ROOT/dist/agent_etc-1.6.14-android.apk" "$OUT/aligned.apk"
+"$BT/apksigner" verify --print-certs "$ROOT/dist/agent_etc-1.6.14-android.apk" | head -4
+ls -lh "$ROOT/dist/agent_etc-1.6.14-android.apk"
