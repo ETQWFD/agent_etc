@@ -195,6 +195,7 @@ button{cursor:pointer}
     <button data-tab="memory">记忆</button>
     <button data-tab="skills">技能</button>
     <button data-tab="plugins">插件</button>
+    <button data-tab="qq">QQ 助手</button>
     <button data-tab="ability">能力</button>
     <button data-tab="tools">工作目录</button>
     <button data-tab="about">关于</button>
@@ -279,6 +280,7 @@ const DEFAULT_SETTINGS = {
   localPath: "", localName: "", localCtx: 2048, localThreads: 4, localLoaded: false, localLoading: false,
   localError: "", autoLoadLocal: true, workMode: "lean", workspaceName: "", workspaceUri: "",
   skillId: "auto", skillIds: ["auto"], customSkills: [],
+  qqEnabled: false, qqEndpoint: "http://127.0.0.1:3001", qqToken: "", qqAllow: "", qqSelfId: "", qqStatus: "未启动",
   mcpUrl: "", mcpToken: "", mcpTools: []
 };
 let settings = Object.assign({}, DEFAULT_SETTINGS, load("etc.settings", {}));
@@ -386,7 +388,7 @@ function updateTop() {
   document.querySelectorAll("#modeTabs button").forEach(b => b.classList.toggle("active", b.dataset.mode === settings.workMode));
   const name = settings.workspaceName || (settings.workspaceUri ? "已选择目录" : "未选择");
   $("#wsBar").innerHTML = "📁 工作目录 <b>" + esc(name) + "</b><span>" + (settings.workspaceUri ? "更换 ›" : "选择 ›") + "</span>";
-  $("#settingsVersion").textContent = (android() ? android().appVersion() : "1.6.6");
+  $("#settingsVersion").textContent = (android() ? android().appVersion() : "1.6.7");
 }
 
 function modelSheetHtml() {
@@ -410,6 +412,131 @@ function openModelSheet() {
   });
 }
 function closeModelSheet() { $("#modelSheet").classList.remove("show"); }
+
+// ---------- QQ 助手（OneBot v11 网关） ----------
+let qqSocket = null, qqReconnect = null, qqManual = false, qqBusy = false;
+function qqStatus(text, selfId) {
+  settings.qqStatus = text || settings.qqStatus || "未启动";
+  if (selfId != null) settings.qqSelfId = String(selfId || "");
+  persist();
+  const el = $("#qqStatus"); if (el) el.textContent = settings.qqStatus;
+  const se = $("#qqSelf"); if (se) se.textContent = settings.qqSelfId || "未获取";
+  updateTop();
+}
+function qqBase() {
+  const el = $("#qqEndpoint");
+  if (el && el.value.trim()) settings.qqEndpoint = el.value.trim();
+  return String(settings.qqEndpoint || "").trim().replace(/\/+$/, "");
+}
+function qqToken() {
+  const el = $("#qqToken");
+  if (el && el.value.trim()) settings.qqToken = el.value.trim();
+  return String(settings.qqToken || "").trim();
+}
+function qqWsUrl() {
+  const base = qqBase();
+  if (!base) return "";
+  let ws = base.replace(/^http/i, "ws").replace(/\/+$/, "");
+  const token = qqToken();
+  return ws + (token ? (ws.includes("?") ? "&" : "?") + "access_token=" + encodeURIComponent(token) : "");
+}
+async function qqApi(path, body) {
+  const base = qqBase();
+  if (!base) throw new Error("先填 OneBot HTTP 地址");
+  const headers = { "Content-Type": "application/json" };
+  if (qqToken()) headers["Authorization"] = "Bearer " + qqToken();
+  const r = await http("POST", base + path, headers, JSON.stringify(body || {}));
+  if (r.status === 0) throw new Error(r.error || "连不上 OneBot 网关");
+  if (r.status >= 400) throw new Error("OneBot HTTP " + r.status + "：" + (r.body || "").slice(0, 200));
+  let data; try { data = JSON.parse(r.body || "{}"); } catch (e) { throw new Error("OneBot 返回不是 JSON"); }
+  if (data.retcode != null && data.retcode !== 0) throw new Error(data.message || data.wording || ("OneBot 错误码 " + data.retcode));
+  return data;
+}
+async function qqTest() {
+  try {
+    const info = await qqApi("/get_login_info", {});
+    const d = info.data || {};
+    settings.qqSelfId = String(d.user_id || "");
+    qqStatus("网关正常" + (d.nickname ? " · " + d.nickname : ""), settings.qqSelfId);
+    toast("QQ 网关已连接" + (d.nickname ? "：" + d.nickname : ""));
+  } catch (e) { qqStatus("测试失败：" + e.message); toast("测试失败：" + e.message); }
+}
+async function qqStart() {
+  const base = qqBase();
+  if (!base) { toast("先填 OneBot HTTP 地址"); return; }
+  qqManual = false; settings.qqEnabled = true; qqStatus("连接中…"); persist();
+  try { if (qqSocket) qqSocket.close(); } catch (e) {}
+  try {
+    const ws = new WebSocket(qqWsUrl());
+    qqSocket = ws;
+    ws.onopen = async () => {
+      qqStatus("在线，等待 QQ 消息…");
+      try { const info = await qqApi("/get_login_info", {}); settings.qqSelfId = String((info.data || {}).user_id || ""); persist(); } catch (e) {}
+    };
+    ws.onmessage = (ev) => {
+      let data; try { data = JSON.parse(ev.data); } catch (e) { return; }
+      if (data && data.post_type === "message") qqOnMessage(data).catch(() => {});
+    };
+    ws.onerror = () => qqStatus("网关连接错误，检查地址/Token");
+    ws.onclose = () => {
+      qqSocket = null;
+      if (qqManual || !settings.qqEnabled) { qqStatus("已停止"); return; }
+      qqStatus("连接断开，5 秒后重连…");
+      clearTimeout(qqReconnect);
+      qqReconnect = setTimeout(() => { if (settings.qqEnabled) qqStart(); }, 5000);
+    };
+  } catch (e) { qqStatus("启动失败：" + e.message); toast("QQ 启动失败：" + e.message); }
+}
+function qqStop() {
+  qqManual = true; settings.qqEnabled = false; persist();
+  clearTimeout(qqReconnect); qqReconnect = null;
+  try { if (qqSocket) qqSocket.close(); } catch (e) {}
+  qqSocket = null; qqStatus("已停止");
+  toast("QQ 助手已停止");
+}
+async function qqSend(userId, text) {
+  const body = { user_id: Number(userId), message: String(text || "").slice(0, 3000), auto_escape: true };
+  await qqApi("/send_private_msg", body);
+}
+async function qqOnMessage(ev) {
+  if (!settings.qqEnabled || ev.message_type !== "private") return;
+  const userId = String(ev.user_id || "");
+  if (!userId || userId === String(settings.qqSelfId || "")) return;
+  const allow = String(settings.qqAllow || "").split(/[,，\s]+/).filter(Boolean);
+  if (allow.length && !allow.includes(userId)) return;
+  const text = String(ev.raw_message || ev.message || "").replace(/\[CQ:[^\]]+\]/g, "").trim();
+  if (!text) return;
+  if (qqBusy || busy) { try { await qqSend(userId, "我正在处理另一个任务，稍后回复你。"); } catch (e) {} return; }
+  qqBusy = true;
+  const title = "QQ " + userId;
+  let sess = sessions.find(s => s.title === title);
+  if (!sess) { sess = { id: uid(), title, messages: [], created: now(), updated: now() }; sessions.unshift(sess); }
+  const oldCurrent = current, oldBusy = busy, oldStop = stopRequested;
+  current = sess; busy = true; stopRequested = false;
+  setBusyUI(true);
+  sess.messages.push({ role: "user", content: text });
+  persist();
+  const run = startRun(text);
+  let answer = "";
+  try {
+    const result = settings.mode === "local" ? await runLocal(text) : await runCloud(text);
+    answer = result.text || "（没有返回内容）";
+    sess.messages.push({ role: "assistant", content: answer, tools: result.tools || [] });
+    finishRun("done", answer);
+  } catch (e) {
+    answer = "执行失败：" + e.message;
+    sess.messages.push({ role: "assistant", content: answer });
+    finishRun("error", e.message);
+  } finally {
+    sess.updated = now(); persist();
+    current = oldCurrent; busy = oldBusy; stopRequested = oldStop;
+    setBusyUI(busy); activeRun = null;
+    renderSessions();
+    if (current === sess) renderChat();
+  }
+  try { await qqSend(userId, answer); } catch (e) { qqStatus("回复失败：" + e.message); }
+  qqBusy = false;
+}
 
 function newSession(render = true) {
   const s = { id: uid(), title: "新任务", messages: [], created: now(), updated: now() };
@@ -676,7 +803,7 @@ async function mcpConnect(silent) {
   let srv = servers.find(x => x.url === url);
   if (!srv) { srv = { id: "srv_" + uid(), url: url, token: token, name: url.replace(/^https:\/\//, "").slice(0, 40), tools: [] }; servers.push(srv); }
   srv.token = token; srv.url = url;
-  await mcpRpc("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "agent_etc-mobile", version: "1.6.6" } }, srv);
+  await mcpRpc("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "agent_etc-mobile", version: "1.6.7" } }, srv);
   try { await mcpRpc("notifications/initialized", {}, srv); } catch (e) {}
   const r = await mcpRpc("tools/list", {}, srv);
   srv.tools = (r.tools || []).map(t => ({ name: t.name, description: t.description || "", inputSchema: t.inputSchema || null }));
@@ -1151,6 +1278,16 @@ function renderSettings() {
       <div id="mcpTools">${mcpServers().map(srv => `<div class="memitem"><button data-del-mcp="${esc(srv.id)}">断开</button><div class="mt">${esc(srv.name || srv.url)}</div><div class="mm"><span>${esc(srv.url)}</span><span>${(srv.tools || []).length} 个工具</span></div>${(srv.tools || []).map(t => `<div class="kv"><span>${esc(t.name)}</span><span style="text-align:right;max-width:60%">${esc((t.description || "").slice(0, 60))}</span></div>`).join("")}</div>`).join("") || `<div class="note">还没有连接插件服务。填地址后点“连接并读取工具”；可以重复连接多个服务。</div>`}</div>
       <div id="mcpMarket"></div>
       <div class="note">插件工具由第三方服务执行，请只连接你信任的地址；工具调用会真实发出网络请求。</div></div>`;
+  } else if (currentTab === "qq") {
+    body.innerHTML = `<div class="section"><h2>QQ 助手 · OneBot v11</h2><p class="desc">通过 NapCat、LLOneBot 等 OneBot v11 网关收发 QQ 私聊。第一步在网关客户端用手机小号扫码登录；本 App 不收集 QQ 密码，也不做扫码。</p>
+      ${field("OneBot HTTP 地址", "qqEndpoint", settings.qqEndpoint, "url", "http://127.0.0.1:3001")}
+      ${field("Access Token（可选）", "qqToken", settings.qqToken, "password", "网关 token")}
+      ${field("允许的 QQ 号（可选，逗号分隔）", "qqAllow", settings.qqAllow, "text", "123456 或留空接收所有私聊")}
+      <div class="row" style="margin:10px 0"><button class="btn" id="qqTest">测试网关</button><button class="btn primary" id="qqStart">${settings.qqEnabled ? "重新连接" : "启动监听"}</button><button class="btn ghost" id="qqStop">停止</button></div>
+      <div class="kv"><span>状态</span><span id="qqStatus">${esc(settings.qqStatus || "未启动")}</span></div>
+      <div class="kv"><span>登录小号</span><span id="qqSelf">${esc(settings.qqSelfId || "未获取")}</span></div>
+      <div class="note">网关启动后点“启动监听”；收到私聊后 AI 会在“QQ 123456”会话里工作，并通过网关回复。扫码、验证码、账号密码都在网关客户端完成，本 App 不保存密码。提示词和工具权限仍按当前设置执行。</div>
+      <div class="note">OneBot WebSocket 地址由 HTTP 地址自动推导，例如 http://127.0.0.1:3001 → ws://127.0.0.1:3001。</div></div>`;
   } else if (currentTab === "ability") {
     let abi = "未知";
     try { abi = android() ? (JSON.parse(android().deviceInfo()).abi || "未知") : "非 Android"; } catch (e) {}
@@ -1177,7 +1314,7 @@ function renderSettings() {
       <div class="note">目录权限由系统文件选择器授予，App 只能访问你选中的文件夹；模型文件也是同样方式导入。</div>
       <div class="note">云端模型可以读网页、打开浏览器、分享文本；不能控制手机其他 App 的界面。需要屏幕操作要单独开无障碍服务，本版没有默认开启。</div></div>`;
   } else if (currentTab === "about") {
-    body.innerHTML = `<div class="section"><h2>关于</h2><div class="kv"><span>版本</span><span>1.6.6</span></div><div class="kv"><span>作者</span><span>ETC</span></div><div class="kv"><span>签名</span><span>ETC Code Signing</span></div><div class="kv"><span>依赖</span><span>无电脑端依赖</span></div>
+    body.innerHTML = `<div class="section"><h2>关于</h2><div class="kv"><span>版本</span><span>1.6.7</span></div><div class="kv"><span>作者</span><span>ETC</span></div><div class="kv"><span>签名</span><span>ETC Code Signing</span></div><div class="kv"><span>依赖</span><span>无电脑端依赖</span></div>
       <div class="row" style="margin-top:14px"><button class="btn" id="checkUpdate">检查更新</button><button class="btn" id="openRepo">打开仓库</button></div>
       <div class="statusline" id="updateInfo">点检查更新读取 GitHub Release</div>
       <div class="note">云端 API 由你自己填写并承担费用；本地 GGUF 完全离线，数据不出手机。</div></div>`;
@@ -1214,6 +1351,9 @@ function bindSettings() {
   bind("keepAlive", "onclick", () => { if (!android()) return toast("不在 Android 环境"); toast(android().startBackground ? android().startBackground() : "当前版本不支持"); });
   bind("importSkill", "onclick", () => pickText("skill"));
   bind("termRun", "onclick", () => { const a = android(); if (!a || !a.shellExec) return toast("当前版本不支持终端"); $("#termOut").textContent = "运行中…"; $("#termOut").textContent = a.shellExec($("#termCmd").value || "", ""); });
+  bind("qqTest", "onclick", qqTest);
+  bind("qqStart", "onclick", qqStart);
+  bind("qqStop", "onclick", qqStop);
   bind("mcpConnect", "onclick", async () => {
     const st = $("#mcpStatus"); st.textContent = "连接中…";
     try { const tools = await mcpConnect(true); st.textContent = "已连接 " + tools.length + " 个工具"; renderSettings(); toast("MCP 已连接"); }
@@ -1291,6 +1431,7 @@ window.__onResume = function () {
   }
 };
 setTimeout(maybeAutoLoadLocal, 700);
+if (settings.qqEnabled) setTimeout(() => qqStart(), 1200);
 </script>
 </body>
 </html>
