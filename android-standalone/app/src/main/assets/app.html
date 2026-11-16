@@ -60,7 +60,15 @@ button{cursor:pointer}
 .worklog .wdot{width:6px;height:6px;flex:0 0 6px;border-radius:50%;background:#6ea887;margin-top:5px;box-shadow:0 0 0 3px rgba(110,168,135,.08)}
 .worklog .wtext{flex:1;word-break:break-word;white-space:pre-wrap}
 .worklog .wtime{color:#58685f;flex:0 0 auto;font-size:10px}
-.worklog.done .wdot{background:#54c28a}.worklog.error .wdot{background:#d36b6b}.worklog.stop .wdot{background:#d8b36b}
+.worklog.done .wdot{background:#54c28a}.worklog.error .wdot{background:#d36b6b}.worklog.stop .wdot{background:#d8b36b}.worklog.think .wdot{background:#69a9d6}
+.proc{margin:6px 0 0 42px;max-width:calc(100% - 42px)}
+.proc summary{cursor:pointer;color:#a9cdb7;font-size:12px;padding:7px 10px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);border-radius:10px;list-style:none}
+.proc summary::-webkit-details-marker{display:none}
+.proc summary:before{content:"▸ ";color:#6ea887}
+.proc[open] summary:before{content:"▾ "}
+.proc .pstep{display:flex;gap:8px;padding:6px 10px;color:#8fa99a;font-size:11.5px;border-bottom:1px solid rgba(255,255,255,.04)}
+.proc .pstep .pk{flex:0 0 auto;color:#69a9d6;min-width:48px}
+.proc .pstep .pt{flex:1;white-space:pre-wrap;word-break:break-word}
 #modelPick{border:1px solid #2b3d31;background:#101712;color:#bbd8c5;border-radius:999px;padding:3px 8px;font-size:10.5px;max-width:32vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #modelPick:active{background:#1a2a20}
 .send.stop{flex-basis:48px;width:48px;font-size:11px;background:#341616;color:#ffb6b6;border:1px solid #6b2a2a}
@@ -531,7 +539,8 @@ async function qqOnMessage(ev) {
   try {
     const result = settings.mode === "local" ? await runLocal(text) : await runCloud(text);
     answer = result.text || "（没有返回内容）";
-    sess.messages.push({ role: "assistant", content: answer, tools: result.tools || [] });
+    const qqProcess = sess.messages.slice(-30).filter(m => m.role === "work");
+    sess.messages.push({ role: "assistant", content: answer, tools: result.tools || [], process: qqProcess });
     finishRun("done", answer);
   } catch (e) {
     answer = "执行失败：" + e.message;
@@ -582,8 +591,9 @@ function renderChat() {
         return `<div class="worklog ${esc(kind)}"><span class="wdot"></span><div class="wtext">${esc(m.content)}</div><span class="wtime">${esc(m.time || "")}</span></div>`;
       }
       const tools = (m.tools || []).map(t => `<div class="tool"><b>${esc(t.name)}</b><span>${esc(t.detail || "")}</span></div>`).join("");
+      const proc = (m.process || []).length ? `<details class="proc"><summary>工作过程 · ${m.process.length} 步</summary>${m.process.map(p => `<div class="pstep"><span class="pk">${esc(p.kind === "think" ? "思考" : (p.kind === "error" ? "错误" : "步骤"))}</span><span class="pt">${esc(p.content)}</span></div>`).join("")}</details>` : "";
       if (m.role === "user") return `<div class="msg user"><div class="bubble">${esc(m.content)}</div></div>`;
-      return `<div class="msg assistant"><div class="avatar">A</div><div><div class="bubble">${esc(m.content)}</div>${tools ? `<div class="tools">${tools}</div>` : ""}</div></div>`;
+      return `<div class="msg assistant"><div class="avatar">A</div><div><div class="bubble">${esc(m.content)}</div>${tools ? `<div class="tools">${tools}</div>` : ""}${proc}</div></div>`;
     }).join("");
   }
   if (busy) chat.insertAdjacentHTML("beforeend", `<div class="msg assistant"><div class="avatar">A</div><div class="bubble"><span class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span> <span id="statusText">处理中…</span></span></div></div>`);
@@ -598,8 +608,8 @@ function addWorkLog(content, kind) {
   current.messages.push({ role: "work", content: text, kind: kind || "run", time: new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"}) });
   current.updated = now(); persist(); renderChat();
 }
-function addMsg(role, content, tools, modelContent) {
-  current.messages.push({ role, content, tools: tools || [], modelContent: modelContent || null });
+function addMsg(role, content, tools, modelContent, process) {
+  current.messages.push({ role, content, tools: tools || [], modelContent: modelContent || null, process: Array.isArray(process) ? process : [] });
   current.updated = now();
   if (current.title === "新任务" && role === "user") current.title = content.slice(0, 18) || "新任务";
   persist(); renderSessions(); renderChat();
@@ -1262,6 +1272,7 @@ async function send() {
   const full = text + (attach ? "\n\n[用户附加的文件：" + attach.name + "]\n" + attach.text.slice(0, 120000) : "");
   pendingAttach = null; $("#attachPill").classList.add("hidden");
   addMsg("user", shown, [], full);
+  const workStart = current.messages.length;
   addWorkLog("分析任务，制定执行计划");
   observeMemory(text);
   busy = true; stopRequested = false; setBusyUI(true); renderChat();
@@ -1273,12 +1284,14 @@ async function send() {
     updateRun("已提交任务");
     const result = settings.mode === "local" ? await runLocal(text || shown) : await runCloud(text || shown);
     busy = false; setBusyUI(false);
-    addMsg("assistant", result.text || "（没有返回内容）", result.tools);
+    const process = current.messages.slice(workStart).filter(m => m.role === "work");
+    addMsg("assistant", result.text || "（没有返回内容）", result.tools, null, process);
     finishRun("done", result.text || "没有返回内容");
   } catch (e) {
     busy = false; setBusyUI(false);
-    if (stopRequested) { addMsg("assistant", "任务已结束。"); finishRun("stopped", "用户结束了任务"); }
-    else { addMsg("assistant", "出错了：" + e.message); finishRun("error", e.message); }
+    const process = current.messages.slice(workStart).filter(m => m.role === "work");
+    if (stopRequested) { addMsg("assistant", "任务已结束。", [], null, process); finishRun("stopped", "用户结束了任务"); }
+    else { addMsg("assistant", "出错了：" + e.message, [], null, process); finishRun("error", e.message); }
   }
   renderChat(); updateTop();
 }
