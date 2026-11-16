@@ -388,7 +388,7 @@ function updateTop() {
   document.querySelectorAll("#modeTabs button").forEach(b => b.classList.toggle("active", b.dataset.mode === settings.workMode));
   const name = settings.workspaceName || (settings.workspaceUri ? "已选择目录" : "未选择");
   $("#wsBar").innerHTML = "📁 工作目录 <b>" + esc(name) + "</b><span>" + (settings.workspaceUri ? "更换 ›" : "选择 ›") + "</span>";
-  $("#settingsVersion").textContent = (android() ? android().appVersion() : "1.6.7");
+  $("#settingsVersion").textContent = (android() ? android().appVersion() : "1.6.8");
 }
 
 function modelSheetHtml() {
@@ -803,7 +803,7 @@ async function mcpConnect(silent) {
   let srv = servers.find(x => x.url === url);
   if (!srv) { srv = { id: "srv_" + uid(), url: url, token: token, name: url.replace(/^https:\/\//, "").slice(0, 40), tools: [] }; servers.push(srv); }
   srv.token = token; srv.url = url;
-  await mcpRpc("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "agent_etc-mobile", version: "1.6.7" } }, srv);
+  await mcpRpc("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "agent_etc-mobile", version: "1.6.8" } }, srv);
   try { await mcpRpc("notifications/initialized", {}, srv); } catch (e) {}
   const r = await mcpRpc("tools/list", {}, srv);
   srv.tools = (r.tools || []).map(t => ({ name: t.name, description: t.description || "", inputSchema: t.inputSchema || null }));
@@ -1182,10 +1182,48 @@ async function requestStop() {
   toast("正在停止本次任务…");
 }
 
+function pptRequest(text) { return /\bppt\b|幻灯片|演示文稿|slides/i.test(String(text || "")); }
+function pptBriefScore(text) {
+  const t = String(text || "");
+  return [/\d+\s*(页|张)|页数|p\d+/i.test(t), /受众|客户|领导|同事|听众|学生|老板/.test(t), /风格|简约|简洁|商务|科技|创意|活泼|正式/.test(t), /主题|关于|介绍|汇报|方案|产品|项目|教学/.test(t)].filter(Boolean).length;
+}
+async function collectPptBrief(text) {
+  if (!pptRequest(text) || pptBriefScore(text) >= 3) return "";
+  const parts = [];
+  const topicGiven = /主题|关于|介绍|汇报|方案|产品|项目|教学/.test(text);
+  if (!topicGiven) {
+    const t = await askUser("这份 PPT 的主题或用途是什么？", []);
+    if (!t || t === "用户取消了选择") return null;
+    parts.push("主题/用途：" + t);
+  }
+  if (!/\d+\s*(页|张)|页数/.test(text)) {
+    const p = await askUser("大约做多少页？", ["5–8 页", "10–12 页", "15 页以上"]);
+    if (!p || p === "用户取消了选择") return null;
+    parts.push("页数：" + p);
+  }
+  if (!/受众|客户|领导|同事|听众|学生|老板/.test(text)) {
+    const a = await askUser("主要给谁看？", ["内部汇报", "客户/领导", "教学/分享"]);
+    if (!a || a === "用户取消了选择") return null;
+    parts.push("受众：" + a);
+  }
+  if (!/风格|简约|简洁|商务|科技|创意|活泼|正式/.test(text)) {
+    const st = await askUser("希望什么风格？", ["简洁商务", "科技感", "创意活泼"]);
+    if (!st || st === "用户取消了选择") return null;
+    parts.push("风格：" + st);
+  }
+  return parts.length ? "\n[PPT 需求确认]\n" + parts.join("\n") : "";
+}
+
 async function send() {
   if (busy) return;
-  const text = $("#input").value.trim();
+  let text = $("#input").value.trim();
   if (!text && !pendingAttach) return;
+  let brief = "";
+  if (text && pptRequest(text)) {
+    brief = await collectPptBrief(text);
+    if (brief === null) { toast("已取消 PPT 任务"); return; }
+    if (brief) text += brief;
+  }
   const attach = pendingAttach;
   $("#input").value = ""; $("#input").style.height = "auto";
   const shown = text + (attach ? (text ? "\n" : "") + "📎 " + attach.name : "");
@@ -1314,7 +1352,7 @@ function renderSettings() {
       <div class="note">目录权限由系统文件选择器授予，App 只能访问你选中的文件夹；模型文件也是同样方式导入。</div>
       <div class="note">云端模型可以读网页、打开浏览器、分享文本；不能控制手机其他 App 的界面。需要屏幕操作要单独开无障碍服务，本版没有默认开启。</div></div>`;
   } else if (currentTab === "about") {
-    body.innerHTML = `<div class="section"><h2>关于</h2><div class="kv"><span>版本</span><span>1.6.7</span></div><div class="kv"><span>作者</span><span>ETC</span></div><div class="kv"><span>签名</span><span>ETC Code Signing</span></div><div class="kv"><span>依赖</span><span>无电脑端依赖</span></div>
+    body.innerHTML = `<div class="section"><h2>关于</h2><div class="kv"><span>版本</span><span>1.6.8</span></div><div class="kv"><span>作者</span><span>ETC</span></div><div class="kv"><span>签名</span><span>ETC Code Signing</span></div><div class="kv"><span>依赖</span><span>无电脑端依赖</span></div>
       <div class="row" style="margin-top:14px"><button class="btn" id="checkUpdate">检查更新</button><button class="btn" id="openRepo">打开仓库</button></div>
       <div class="statusline" id="updateInfo">点检查更新读取 GitHub Release</div>
       <div class="note">云端 API 由你自己填写并承担费用；本地 GGUF 完全离线，数据不出手机。</div></div>`;
