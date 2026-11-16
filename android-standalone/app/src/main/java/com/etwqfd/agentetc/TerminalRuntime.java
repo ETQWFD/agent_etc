@@ -47,6 +47,8 @@ public final class TerminalRuntime {
                     fos.write("termux-arm-v0.119.0-beta.3\n".getBytes(StandardCharsets.UTF_8));
                 }
             }
+            new File(prefix, "home").mkdirs();
+            new File(prefix, "tmp").mkdirs();
             ready = bash.exists();
             if (!ready) lastError = "bootstrap 已解压，但未找到 bash";
         } catch (Throwable e) {
