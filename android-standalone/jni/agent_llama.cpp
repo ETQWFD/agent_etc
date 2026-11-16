@@ -5,6 +5,7 @@
 #include <vector>
 #include <cstring>
 #include <cstdio>
+#include <atomic>
 #include "llama.h"
 
 #define TAG "agentllama"
@@ -20,6 +21,7 @@ struct Session {
 };
 
 static std::string g_last_error;
+static std::atomic<bool> g_stop{false};
 
 static std::string jstr(JNIEnv * env, jstring s) {
     if (!s) return "";
@@ -43,6 +45,7 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_com_etwqfd_agentetc_LlamaBridge_nativeLoad(JNIEnv * env, jclass, jstring path_, jint n_ctx, jint n_threads, jint n_gpu) {
     std::string path = jstr(env, path_);
     g_last_error.clear();
+    g_stop = false;
     Session * s = new Session();
     llama_model_params mp = llama_model_default_params();
     mp.n_gpu_layers = n_gpu;
@@ -80,6 +83,11 @@ Java_com_etwqfd_agentetc_LlamaBridge_nativeFree(JNIEnv *, jclass, jlong h) {
     if (s->ctx) llama_free(s->ctx);
     if (s->model) llama_model_free(s->model);
     delete s;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_etwqfd_agentetc_LlamaBridge_nativeRequestStop(JNIEnv *, jclass) {
+    g_stop = true;
 }
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -167,6 +175,7 @@ Java_com_etwqfd_agentetc_LlamaBridge_nativeGenerate(JNIEnv * env, jclass, jlong 
     llama_sampler_chain_add(smpl, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
     std::string out;
     for (int i = 0; i < max_tokens; i++) {
+        if (g_stop.load()) { g_last_error = "已停止"; break; }
         llama_token id = llama_sampler_sample(smpl, s->ctx, -1);
         if (llama_vocab_is_eog(vocab, id)) break;
         char piece[512];

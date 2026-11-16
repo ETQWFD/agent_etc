@@ -30,6 +30,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
+import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -334,6 +335,14 @@ public class NativeBridge {
 
     @JavascriptInterface
     public void unloadLocal() { LlamaBridge.unload(); }
+
+    @JavascriptInterface
+    public void cancelLocal() { try { LlamaBridge.requestStop(); } catch (Throwable ignored) {} }
+
+    @JavascriptInterface
+    public String shellExec(String command, String cwd) {
+        return TerminalRuntime.exec(activity, command, cwd);
+    }
 
     @JavascriptInterface
     public void localChat(final String id, final String rolesJson, final String contentsJson,

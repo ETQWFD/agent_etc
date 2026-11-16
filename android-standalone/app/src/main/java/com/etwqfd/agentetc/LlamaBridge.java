@@ -18,6 +18,7 @@ public final class LlamaBridge {
     public static native String nativeBuildPrompt(long h, String[] roles, String[] contents);
     public static native String nativeGenerate(long h, String prompt, int maxTokens, float temp, float topP, int topK);
     public static native String nativeInfo(long h);
+    public static native void nativeRequestStop();
 
     public static synchronized boolean load(String path, int nCtx, int threads, int gpu) {
         if (loadError != null) return false;
@@ -26,6 +27,8 @@ public final class LlamaBridge {
         handle = nativeLoad(path, nCtx, threads, gpu);
         return handle != 0;
     }
+
+    public static synchronized void requestStop() { try { if (loadError == null) nativeRequestStop(); } catch (Throwable ignored) {} }
 
     public static synchronized void unload() {
         if (handle != 0) { nativeFree(handle); handle = 0; }

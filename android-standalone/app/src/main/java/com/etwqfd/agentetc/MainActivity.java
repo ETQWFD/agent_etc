@@ -46,6 +46,16 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new WebViewClient());
         bridge = new NativeBridge(this, web);
         web.addJavascriptInterface(bridge, "Android");
+        new Thread(() -> {
+            TerminalRuntime.ensure(this);
+            runOnUiThread(() -> {
+                if (TerminalRuntime.isReady()) {
+                    android.widget.Toast.makeText(this, "内置 32 位终端核心已就绪", android.widget.Toast.LENGTH_SHORT).show();
+                } else if (!TerminalRuntime.error().isEmpty()) {
+                    android.widget.Toast.makeText(this, "终端核心解压失败：" + TerminalRuntime.error(), android.widget.Toast.LENGTH_LONG).show();
+                }
+            });
+        }, "termux-bootstrap").start();
         web.loadUrl("file:///android_asset/app.html");
         setContentView(web);
         startTaskService();
