@@ -119,7 +119,8 @@ button{cursor:pointer}
 .memitem button{float:right;border:0;background:#1d1d24;color:#a9a9b5;border-radius:7px;font-size:10.5px;padding:5px 7px}
 .statusline{font-size:11.5px;color:#9b9ba8;background:#111115;border:1px solid var(--line);border-radius:9px;padding:9px 10px;white-space:pre-wrap;word-break:break-all;margin-top:10px}
 .kv{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #1d1d24;font-size:12px;color:#c8c8d2}
-.kv span:last-child{color:#8d8d9b}
+.kv span:first-child{flex:0 0 auto;white-space:nowrap}
+.kv span:last-child{color:#8d8d9b;text-align:right;min-width:0}
 /* ask modal */
 #modelSheet{position:fixed;inset:0;z-index:79;background:rgba(0,0,0,.62);display:none;align-items:flex-end;justify-content:center;padding:0}
 #modelSheet.show{display:flex}
@@ -268,7 +269,7 @@ const DEFAULT_SETTINGS = {
   mode: "cloud", baseUrl: "", apiKey: "", model: "", temperature: 0.6, maxTokens: 2048,
   localPath: "", localName: "", localCtx: 2048, localThreads: 4, localLoaded: false, localLoading: false,
   localError: "", autoLoadLocal: true, workMode: "lean", workspaceName: "", workspaceUri: "",
-  skillId: "auto", customSkills: [],
+  skillId: "auto", skillIds: ["auto"], customSkills: [],
   mcpUrl: "", mcpToken: "", mcpTools: []
 };
 let settings = Object.assign({}, DEFAULT_SETTINGS, load("etc.settings", {}));
@@ -279,6 +280,10 @@ if (!Array.isArray(settings.mcpServers)) {
   } else settings.mcpServers = [];
 }
 if (!Array.isArray(settings.customSkills)) settings.customSkills = [];
+if (!Array.isArray(settings.skillIds)) settings.skillIds = settings.skillId ? [settings.skillId] : ["auto"];
+settings.skillIds = settings.skillIds.filter(id => typeof id === "string" && id);
+if (!settings.skillIds.length) settings.skillIds = ["auto"];
+settings.skillId = settings.skillIds[0];
 try {
   if (!settings.localPath) {
     const a = typeof Android !== "undefined" ? Android : null;
@@ -372,7 +377,7 @@ function updateTop() {
   document.querySelectorAll("#modeTabs button").forEach(b => b.classList.toggle("active", b.dataset.mode === settings.workMode));
   const name = settings.workspaceName || (settings.workspaceUri ? "已选择目录" : "未选择");
   $("#wsBar").innerHTML = "📁 工作目录 <b>" + esc(name) + "</b><span>" + (settings.workspaceUri ? "更换 ›" : "选择 ›") + "</span>";
-  $("#settingsVersion").textContent = (android() ? android().appVersion() : "1.6.4");
+  $("#settingsVersion").textContent = (android() ? android().appVersion() : "1.6.5");
 }
 
 function modelSheetHtml() {
@@ -479,7 +484,9 @@ window.__textPicked = function (id, name, text, err) {
     const skill = { id: "custom_" + uid(), name: title.slice(0, 30), desc: "导入的技能", prompt: prompt };
     settings.customSkills = settings.customSkills || [];
     settings.customSkills.push(skill);
-    settings.skillId = skill.id;
+    if (!Array.isArray(settings.skillIds)) settings.skillIds = [];
+    settings.skillIds.push(skill.id);
+    settings.skillId = settings.skillIds[0];
     persist(); updateTop(); renderSettings(); toast("技能已导入并启用");
   }
 };
@@ -660,7 +667,7 @@ async function mcpConnect(silent) {
   let srv = servers.find(x => x.url === url);
   if (!srv) { srv = { id: "srv_" + uid(), url: url, token: token, name: url.replace(/^https:\/\//, "").slice(0, 40), tools: [] }; servers.push(srv); }
   srv.token = token; srv.url = url;
-  await mcpRpc("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "agent_etc-mobile", version: "1.6.4" } }, srv);
+  await mcpRpc("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "agent_etc-mobile", version: "1.6.5" } }, srv);
   try { await mcpRpc("notifications/initialized", {}, srv); } catch (e) {}
   const r = await mcpRpc("tools/list", {}, srv);
   srv.tools = (r.tools || []).map(t => ({ name: t.name, description: t.description || "", inputSchema: t.inputSchema || null }));
@@ -712,7 +719,7 @@ const TOOL_DEFS = [
   { type: "function", function: { name: "open_app_search", description: "打开指定 App 并在搜索框里搜索一个词；适合哔哩哔哩等 App，不靠猜坐标", parameters: { type: "object", properties: { app: { type: "string" }, query: { type: "string" } }, required: ["app","query"] } } },
   { type: "function", function: { name: "open_accessibility", description: "打开系统无障碍设置，让用户自己授权屏幕读取/点击", parameters: { type: "object", properties: {} } } },
   { type: "function", function: { name: "list_skills", description: "列出手机版内置和导入的技能", parameters: { type: "object", properties: {} } } },
-  { type: "function", function: { name: "use_skill", description: "切换当前技能；name 传技能名称或 id", parameters: { type: "object", properties: { name: { type: "string" } }, required: ["name"] } } }
+  { type: "function", function: { name: "use_skill", description: "启用一个技能（可同时启用多个）；name 传技能名称或 id", parameters: { type: "object", properties: { name: { type: "string" } }, required: ["name"] } } }
 ];
 const TOOL_NAMES = TOOL_DEFS.map(t => t.function.name);
 
@@ -794,14 +801,16 @@ async function execTool(name, args) {
       case "open_accessibility": { const r = a ? a.openAccessibility() : "无 Android 环境"; return { text: r, detail: "无障碍设置" }; }
       case "list_skills": {
         const all = SKILLS.concat(settings.customSkills || []);
-        return { text: all.map(k => "- " + k.name + "（" + (k.group || "导入") + "）：" + (k.desc || "") + (settings.skillId === k.id ? " [当前]" : "")).join("\n"), detail: all.length + " 个技能" };
+        return { text: all.map(k => "- " + k.name + "（" + (k.group || "导入") + "）：" + (k.desc || "") + (isSkillEnabled(k.id) ? " [已启用]" : "")).join("\n"), detail: all.length + " 个技能 · 已启用 " + settings.skillIds.length };
       }
       case "use_skill": {
         const all = SKILLS.concat(settings.customSkills || []);
         const hit = all.find(k => k.id === args.name || k.name === args.name);
         if (!hit) return { text: "没有这个技能：" + args.name };
-        settings.skillId = hit.id; persist(); updateTop();
-        return { text: "已切换到技能：" + hit.name, detail: hit.name };
+        if (!isSkillEnabled(hit.id)) settings.skillIds.push(hit.id);
+        settings.skillId = settings.skillIds[0];
+        persist(); updateTop(); renderSettings();
+        return { text: "已启用技能：" + hit.name + "（当前共 " + settings.skillIds.length + " 个）", detail: hit.name };
       }
       default:
         if (name.startsWith("mcp__")) {
@@ -832,18 +841,48 @@ function askUser(question, options) {
 }
 
 // ---------- agent ----------
-function activeSkill() {
-  const custom = (settings.customSkills || []).find(x => x.id === settings.skillId);
-  if (custom) return custom;
-  return SKILLS.find(x => x.id === settings.skillId) || SKILLS[0];
+function allSkills() { return SKILLS.concat(settings.customSkills || []); }
+function normalizeSkillIds() {
+  if (!Array.isArray(settings.skillIds)) settings.skillIds = [];
+  const existing = allSkills().map(k => k.id);
+  settings.skillIds = settings.skillIds.filter(id => existing.includes(id));
+  if (!settings.skillIds.length) settings.skillIds = ["auto"];
+  settings.skillId = settings.skillIds[0];
+}
+function isSkillEnabled(id) { return (settings.skillIds || []).includes(id); }
+function activeSkills() {
+  normalizeSkillIds();
+  return settings.skillIds.map(id => allSkills().find(k => k.id === id)).filter(Boolean);
+}
+function activeSkill() { normalizeSkillIds(); return activeSkills()[0] || SKILLS[0]; }
+function toggleSkill(id) {
+  normalizeSkillIds();
+  if (isSkillEnabled(id)) settings.skillIds = settings.skillIds.filter(x => x !== id);
+  else settings.skillIds.push(id);
+  if (!settings.skillIds.length) settings.skillIds = ["auto"];
+  settings.skillId = settings.skillIds[0];
+  persist(); updateTop(); renderSettings();
+}
+function enableAllSkills() {
+  settings.skillIds = allSkills().map(k => k.id);
+  settings.skillId = settings.skillIds[0] || "auto";
+  persist(); updateTop(); renderSettings(); toast("已启用全部 " + settings.skillIds.length + " 个技能");
+}
+function skillPromptText() {
+  const md = modeOf();
+  const list = activeSkills();
+  const budget = settings.mode === "local" ? 5200 : 22000;
+  const each = Math.max(500, Math.floor(budget / Math.max(1, list.length)));
+  return list.map(k => `### ${k.name}（${k.group || "导入"}）\n${String(k.prompt || k.desc || "").slice(0, each)}`).join("\n");
 }
 function systemPrompt() {
   const md = modeOf();
-  const skill = activeSkill();
+  const list = activeSkills();
   const ws = settings.workspaceUri ? `已授权工作目录：${settings.workspaceName}（读写文件默认用这里）` : "工作目录：未选择（文件工具先用应用私有目录）";
   return `你是 agent_etc 手机独立版，一个能真实干活的手机 Agent。作者 ETC。
 当前工作模式：${md.name} —— ${md.desc}。
-当前技能：${skill.name}${skill.prompt ? " —— " + skill.prompt : ""}
+当前启用技能（${list.length} 个）：${list.map(k => k.name).join("、")}
+${skillPromptText()}
 ${ws}
 你能读取屏幕文字并在用户授权后点击屏幕；人机验证必须用户本人完成，不要尝试绕过。
 已连接 MCP 插件工具：${mcpAllTools().map(t => t.name).join("、") || "无"}。
@@ -931,7 +970,7 @@ async function runCloud(userText) {
 }
 
 function localSystem() {
-  return `你是 agent_etc 手机本地版，运行在用户手机上。当前模式：${modeOf().name}（${modeOf().desc}）。回答简洁。
+  return `你是 agent_etc 手机本地版，运行在用户手机上。当前模式：${modeOf().name}（${modeOf().desc}）。当前启用技能：${activeSkills().map(k => k.name).join("、") || "自动"}。回答简洁。${skillPromptText().slice(0, 5000)}
 需要工具时只输出一行 JSON：{"tool":"工具名","args":{...}}，不要解释。
 可用工具：open_url(url), open_app(name), open_app_search(app,query), list_files(), read_file(name), write_file(name,content), create_ppt(name,title,slides), http_fetch(url), memory_save(text,importance), memory_search(query), ask_user(question,options), device_info(), screen_read(), screen_find(text), screen_tap_text(text), screen_input(text), screen_enter(), screen_tap(x,y), screen_back(), shell_exec(command), list_skills(), use_skill(name)${mcpAllTools().length ? "，以及 MCP 工具 " + mcpAllTools().map(t => t.name).join("、") : ""}。
 做 PPT 先用 ask_user 确认主题、页数、受众和风格；生成时调用 create_ppt，不要用 write_file 写 .pptx。打开 B 站等 App 用 open_app；搜索时用 screen_find / screen_tap_text / screen_input / screen_enter 按文字操作，不要瞎猜坐标。
@@ -1023,7 +1062,7 @@ async function send() {
   try {
     const memHits = memSearch(text || shown, 4).filter(m => memStrength(m) > 0.25);
     if (memHits.length) addWorkLog(`注入长期记忆 ${memHits.length} 条`);
-    addWorkLog(`使用技能：${activeSkill().name} · 模式：${modeOf().name}`);
+    addWorkLog(`启用技能：${activeSkills().map(k => k.name).join("、") || "自动"} · 模式：${modeOf().name}`);
     updateRun("已提交任务");
     const result = settings.mode === "local" ? await runLocal(text || shown) : await runCloud(text || shown);
     busy = false; setBusyUI(false);
@@ -1084,14 +1123,15 @@ function renderSettings() {
       <div class="note" id="termOut" style="margin-top:10px;white-space:pre-wrap;font-family:monospace;color:#a9cdb7">尚未运行</div>
       <div class="note">每次执行会显示命令输出；涉及删除、网络或安装时请先确认。内置 32 位 Termux 核心：首次启动会在后台解压；32 位 ARM 设备直接可用，64 位设备不支持 32 位时会自动回退系统 shell。</div></div>`;
   } else if (currentTab === "skills") {
-    const active = activeSkill();
+    const list = activeSkills();
     const custom = settings.customSkills || [];
-    body.innerHTML = `<div class="section"><h2>技能</h2><p class="desc">内置技能共 ${SKILLS.length} 个，覆盖办公、调研、写作、开发、工具、学习和生活；也可以导入电脑版的 SKILL.md。</p>
-      <div class="kv"><span>当前技能</span><span>${esc(active.name)}</span></div>
+    body.innerHTML = `<div class="section"><h2>技能</h2><p class="desc">内置技能共 ${SKILLS.length} 个，可以同时启用多个；启用的技能会一起注入当前任务。也可以导入电脑版的 SKILL.md。</p>
+      <div class="kv"><span>已启用</span><span>${list.length} 个：${esc(list.map(k => k.name).join("、").slice(0, 80))}</span></div>
+      <div class="row" style="margin:10px 0"><button class="btn primary" id="skillAll">全部启用</button><button class="btn ghost" id="skillNone">只留自动</button></div>
       <div class="field"><label>搜索技能</label><input id="skillSearch" value="${esc(skillQuery)}" placeholder="输入名称或用途，例如 表格 / 排错 / 翻译"></div>
-      <div id="skillList">${SKILLS.map(k => `<div class="memitem" data-skill-name="${esc((k.name + " " + k.desc + " " + k.group).toLowerCase())}"><button data-use-skill="${k.id}">${settings.skillId === k.id ? "已启用" : "启用"}</button><div class="mt">${esc(k.name)} <small style="color:#6f8d7a">${esc(k.group)}</small></div><div class="mm"><span>${esc(k.desc)}</span></div></div>`).join("")}${custom.map(k => `<div class="memitem" data-skill-name="${esc((k.name + " 导入").toLowerCase())}"><button data-del-skill="${k.id}">删除</button><div class="mt">${esc(k.name)}</div><div class="mm"><span>导入的技能</span><button data-use-skill="${k.id}" style="float:none;margin-left:auto">${settings.skillId === k.id ? "已启用" : "启用"}</button></div></div>`).join("")}</div>
+      <div id="skillList">${SKILLS.map(k => `<div class="memitem" data-skill-name="${esc((k.name + " " + k.desc + " " + k.group).toLowerCase())}"><button data-use-skill="${k.id}">${isSkillEnabled(k.id) ? "已启用" : "启用"}</button><div class="mt">${esc(k.name)} <small style="color:#6f8d7a">${esc(k.group)}</small></div><div class="mm"><span>${esc(k.desc)}</span></div></div>`).join("")}${custom.map(k => `<div class="memitem" data-skill-name="${esc((k.name + " 导入").toLowerCase())}"><button data-del-skill="${k.id}">删除</button><div class="mt">${esc(k.name)}</div><div class="mm"><span>导入的技能</span><button data-use-skill="${k.id}" style="float:none;margin-left:auto">${isSkillEnabled(k.id) ? "已启用" : "启用"}</button></div></div>`).join("")}</div>
       <button class="btn primary" id="importSkill" style="width:100%;margin-top:10px">导入 .md / SKILL.md</button>
-      <div class="note">技能只是做事方法的提示，不会自动获得新权限；工具权限仍由你在系统里授予。</div></div>`;
+      <div class="note">多个技能同时启用时，系统会把它们的做事方法一起注入；本地模型上下文较小时会自动压缩每条技能说明。技能只是提示，不会自动获得新权限。</div></div>`;
   } else if (currentTab === "plugins") {
     body.innerHTML = `<div class="section"><h2>插件 · MCP</h2><p class="desc">连接远程 HTTPS MCP 服务，工具会直接出现在 Agent 的工具列表里。手机版不能运行 npx 本地插件；本地插件请在电脑端安装。</p>
       ${field("MCP 地址（HTTPS）", "mcpUrl", settings.mcpUrl, "url", "https://example.com/mcp")}
@@ -1128,7 +1168,7 @@ function renderSettings() {
       <div class="note">目录权限由系统文件选择器授予，App 只能访问你选中的文件夹；模型文件也是同样方式导入。</div>
       <div class="note">云端模型可以读网页、打开浏览器、分享文本；不能控制手机其他 App 的界面。需要屏幕操作要单独开无障碍服务，本版没有默认开启。</div></div>`;
   } else if (currentTab === "about") {
-    body.innerHTML = `<div class="section"><h2>关于</h2><div class="kv"><span>版本</span><span>1.6.4</span></div><div class="kv"><span>作者</span><span>ETC</span></div><div class="kv"><span>签名</span><span>ETC Code Signing</span></div><div class="kv"><span>依赖</span><span>无电脑端依赖</span></div>
+    body.innerHTML = `<div class="section"><h2>关于</h2><div class="kv"><span>版本</span><span>1.6.5</span></div><div class="kv"><span>作者</span><span>ETC</span></div><div class="kv"><span>签名</span><span>ETC Code Signing</span></div><div class="kv"><span>依赖</span><span>无电脑端依赖</span></div>
       <div class="row" style="margin-top:14px"><button class="btn" id="checkUpdate">检查更新</button><button class="btn" id="openRepo">打开仓库</button></div>
       <div class="statusline" id="updateInfo">点检查更新读取 GitHub Release</div>
       <div class="note">云端 API 由你自己填写并承担费用；本地 GGUF 完全离线，数据不出手机。</div></div>`;
@@ -1156,7 +1196,9 @@ function bindSettings() {
     skillQuery = e.target.value || "";
     document.querySelectorAll("#skillList [data-skill-name]").forEach(el => { el.style.display = (!q || el.dataset.skillName.includes(q)) ? "" : "none"; });
   });
-  document.querySelectorAll("[data-use-skill]").forEach(b => b.onclick = () => { settings.skillId = b.dataset.useSkill; persist(); updateTop(); renderSettings(); toast("已启用技能"); });
+  document.querySelectorAll("[data-use-skill]").forEach(b => b.onclick = () => { toggleSkill(b.dataset.useSkill); toast(isSkillEnabled(b.dataset.useSkill) ? "已停用技能" : "已启用技能"); });
+  bind("skillAll", "onclick", () => enableAllSkills());
+  bind("skillNone", "onclick", () => { settings.skillIds = ["auto"]; settings.skillId = "auto"; persist(); updateTop(); renderSettings(); toast("已只保留自动技能"); });
   document.querySelectorAll("[data-del-skill]").forEach(b => b.onclick = () => { settings.customSkills = (settings.customSkills || []).filter(x => x.id !== b.dataset.delSkill); if (settings.skillId === b.dataset.delSkill) settings.skillId = "auto"; persist(); renderSettings(); });
   bind("clearRuns", "onclick", () => { runs = runs.filter(r => r.status === "running"); persistRuns(); renderSettings(); toast("已清空完成任务"); });
   bind("overlayPerm", "onclick", () => { if (!android()) return toast("不在 Android 环境"); toast(android().openOverlaySettings()); });
