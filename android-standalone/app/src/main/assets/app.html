@@ -69,6 +69,23 @@ button{cursor:pointer}
 .proc .pstep{display:flex;gap:8px;padding:6px 10px;color:#8fa99a;font-size:11.5px;border-bottom:1px solid rgba(255,255,255,.04)}
 .proc .pstep .pk{flex:0 0 auto;color:#69a9d6;min-width:48px}
 .proc .pstep .pt{flex:1;white-space:pre-wrap;word-break:break-word}
+.msgbody{min-width:0;max-width:calc(100% - 37px);flex:1}
+.runhead{display:flex;align-items:center;gap:7px;width:100%;border:1px solid #2a2a33;background:#121216;border-radius:9px;padding:8px 10px;margin:0 0 7px;color:#8d8d99;font-size:11.5px;text-align:left}
+.runhead b{color:#b7b7c2;font-weight:500}.runhead .dur{margin-left:auto;color:#7f8f85}
+#processSheet{position:fixed;inset:0;z-index:82;background:rgba(0,0,0,.58);display:none;align-items:flex-end;justify-content:center;padding:0}
+#processSheet.show{display:flex}
+#processSheet .pbox{width:100%;max-width:560px;max-height:82vh;overflow:auto;background:#111116;border:1px solid #30303a;border-radius:18px 18px 0 0;padding:14px 16px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -20px 60px rgba(0,0,0,.55)}
+#processSheet .phead{display:flex;align-items:center;gap:10px;position:sticky;top:0;background:#111116;padding:2px 0 10px;z-index:2}
+#processSheet .phead h3{font-size:14px;margin:0;flex:1;text-align:center}
+#processSheet .pclose{border:0;background:transparent;color:#aaa;font-size:18px;width:28px;height:28px}
+.pstep{margin:7px 0;border:1px solid #25252d;background:#15151a;border-radius:10px;overflow:hidden}
+.pstep .ptop{display:flex;gap:8px;align-items:flex-start;padding:9px 10px}
+.pstep .picon{width:20px;flex:0 0 20px;height:20px;border-radius:5px;background:#1c2a22;color:#9be7b4;display:flex;align-items:center;justify-content:center;font-size:11px}
+.pstep .ptitle{font-size:11.5px;line-height:1.5;color:#c8c8d2;flex:1;white-space:pre-wrap;word-break:break-word}
+.pstep .ptime{font-size:9.5px;color:#646470;flex:0 0 auto}
+.pstep details{border-top:1px solid #24242c}
+.pstep details summary{cursor:pointer;padding:6px 10px;font-size:10.5px;color:#8fa99a;list-style:none}
+.pstep details pre{margin:0;padding:8px 10px;white-space:pre-wrap;word-break:break-word;color:#a9cdb7;background:#0d0f0e;font:10px/1.5 ui-monospace,Menlo,monospace;max-height:260px;overflow:auto}
 #modelPick{border:1px solid #2b3d31;background:#101712;color:#bbd8c5;border-radius:999px;padding:3px 8px;font-size:10.5px;max-width:32vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #modelPick:active{background:#1a2a20}
 .send.stop{flex-basis:48px;width:48px;font-size:11px;background:#341616;color:#ffb6b6;border:1px solid #6b2a2a}
@@ -149,7 +166,7 @@ button{cursor:pointer}
 </head>
 <body>
 <div id="top">
-  <div class="logo">A</div>
+  <div class="logo" id="logo">A</div>
   <div class="brand"><b>agent_etc</b><small>手机独立版 · 不依赖电脑</small></div>
   <div class="spacer"></div>
   <div class="modechip hidden" id="taskChip">工作中</div>
@@ -214,6 +231,7 @@ button{cursor:pointer}
 
 <div id="modelSheet"><div class="askbox" id="modelSheetBox"></div></div>
 <div id="ask"><div class="askbox" id="askBox"></div></div>
+<div id="processSheet"><div class="pbox"><div class="phead"><button class="pclose" onclick="closeProcess()">×</button><h3>思考过程</h3><span style="width:28px"></span></div><div id="processBody"></div></div></div>
 <div id="toast"></div>
 
 <script>
@@ -247,6 +265,13 @@ const MODES = {
   fast:  { name: "极速", temp: 0.2, maxTokens: 700,  desc: "最快出结果，不做多余展开" },
   create:{ name: "创造", temp: 0.9, maxTokens: 3000, desc: "写方案、文案、网页与创意" },
   model: { name: "建模", temp: 0.4, maxTokens: 3000, desc: "结构建模、代码、表格与流程" }
+};
+const THINK = {
+  off:      { name: "关闭", rounds: 1, tokens: 800,  desc: "只给结果，不展开思考" },
+  simple:   { name: "简单", rounds: 3, tokens: 1600, desc: "短思考，适合日常问答" },
+  advanced: { name: "高级", rounds: 6, tokens: 2400, desc: "默认：计划+工具+验证" },
+  pro:      { name: "Pro",  rounds: 10, tokens: 3200, desc: "复杂任务，多轮工具调用" },
+  max:      { name: "Max",  rounds: 16, tokens: 4096, desc: "长任务/写代码，尽量不提前停" }
 };
 const SKILLS = [
   { id: "auto", group: "通用", name: "自动", desc: "按任务自己选方法", prompt: "" },
@@ -287,7 +312,7 @@ const SKILLS = [
 const DEFAULT_SETTINGS = {
   mode: "cloud", baseUrl: "", apiKey: "", model: "", temperature: 0.6, maxTokens: 2048,
   localPath: "", localName: "", localCtx: 2048, localThreads: 4, localLoaded: false, localLoading: false,
-  localError: "", autoLoadLocal: true, workMode: "lean", workspaceName: "", workspaceUri: "",
+  localError: "", autoLoadLocal: true, localUnlimited: true, workMode: "lean", thinkLevel: "advanced", workspaceName: "", workspaceUri: "", terminalCwd: "",
   skillId: "auto", skillIds: ["auto"], customSkills: [],
   imageUrl: "", imageKey: "", imageModel: "",
   qqPersona: "简洁、可靠，先给结论，再给必要步骤",
@@ -388,7 +413,10 @@ function modeName() {
   return settings.model ? ("云端 · " + settings.model) : "未配置模型";
 }
 function modeOf() { return MODES[settings.workMode] || MODES.lean; }
+function thinkCfg() { return THINK[settings.thinkLevel] || THINK.advanced; }
 function updateTop() {
+  const logo = $("#logo");
+  if (logo) { const a = avatarFor(); const m = a.match(/color:(#[0-9a-f]+);background:(#[0-9a-f]+);border-color:(#[0-9a-f]+)" title="[^"]*">([^<]+)/i); if (m) { logo.style.color = m[1]; logo.style.background = m[2]; logo.style.borderColor = m[3]; logo.textContent = m[4]; } }
   $("#modeChip").textContent = modeName();
   const mp = $("#modelPick"); if (mp) mp.textContent = settings.mode === "local" ? ("本地 " + (settings.localName || "模型")) : ("云端 " + (settings.model || "未配置"));
   const tc = $("#taskChip"); if (tc) { tc.classList.toggle("hidden", !activeRun); tc.textContent = activeRun ? (activeRun.status === "error" ? "任务失败" : "工作中") : ""; }
@@ -399,7 +427,7 @@ function updateTop() {
   document.querySelectorAll("#modeTabs button").forEach(b => b.classList.toggle("active", b.dataset.mode === settings.workMode));
   const name = settings.workspaceName || (settings.workspaceUri ? "已选择目录" : "未选择");
   $("#wsBar").innerHTML = "📁 工作目录 <b>" + esc(name) + "</b><span>" + (settings.workspaceUri ? "更换 ›" : "选择 ›") + "</span>";
-  $("#settingsVersion").textContent = (android() ? android().appVersion() : "1.6.11");
+  $("#settingsVersion").textContent = (android() ? android().appVersion() : "1.6.12");
 }
 
 function modelSheetHtml() {
@@ -575,6 +603,36 @@ function renderSessions() {
   if (!Array.isArray(sessions)) sessions = [];
   $("#sessionList").innerHTML = sessions.map(s => `<div class="sess ${s.id === current.id ? "active" : ""}" data-id="${s.id}"><span>${esc(s.title)}</span><i data-del="${s.id}">×</i></div>`).join("");
 }
+const PROC_CACHE = {};
+function currentModelKey() { return settings.mode === "local" ? ("local:" + (settings.localName || "GGUF")) : ("cloud:" + (settings.model || "未配置")); }
+function avatarFor(key) {
+  const raw = String(key || currentModelKey());
+  const low = raw.toLowerCase();
+  let letter = "A", color = "#9be7b4", bg = "#0b0f0c", border = "#24352a";
+  if (low.includes("local") || low.includes("gguf") || low.includes("llama") || low.includes("qwen")) { letter = "L"; color = "#9be7b4"; bg = "#0b1710"; border = "#2b5138"; }
+  else if (low.includes("deepseek")) { letter = "D"; color = "#7cc7ff"; bg = "#0b1420"; border = "#244a6a"; }
+  else if (low.includes("gpt") || low.includes("openai")) { letter = "G"; color = "#ffd38a"; bg = "#1b160a"; border = "#5a451d"; }
+  else if (low.includes("claude")) { letter = "C"; color = "#ffb3a7"; bg = "#1b0f0d"; border = "#5a2b24"; }
+  else if (low.includes("gemini")) { letter = "G"; color = "#b9a7ff"; bg = "#141026"; border = "#3d2f73"; }
+  else if (low.includes("kimi")) { letter = "K"; color = "#a7d9ff"; bg = "#0b1520"; border = "#244a6a"; }
+  else if (low.includes("glm") || low.includes("chatglm")) { letter = "Z"; color = "#ffc78a"; bg = "#1b130a"; border = "#5a3d1d"; }
+  else if (raw.trim()) { letter = raw.trim().charAt(0).toUpperCase(); }
+  return `<div class="avatar" style="color:${color};background:${bg};border-color:${border}" title="${esc(raw)}">${esc(letter)}</div>`;
+}
+function fmtDuration(ms) {
+  const sec = Math.max(0, Math.round(Number(ms || 0) / 1000));
+  if (sec < 60) return sec + " 秒";
+  return Math.floor(sec / 60) + " 分 " + (sec % 60) + " 秒";
+}
+function openProcess(pid) {
+  const data = PROC_CACHE[pid];
+  if (!data) { toast("这条消息没有工作过程记录"); return; }
+  const steps = data.process || [];
+  $("#processBody").innerHTML = `<div style="color:#8d8d99;font-size:11px;margin:0 0 8px">共耗时 ${fmtDuration(data.duration)} · ${steps.length} 步</div>` +
+    (steps.length ? steps.map(p => `<div class="pstep"><div class="ptop"><div class="picon">${p.kind === "think" ? "T" : (p.kind === "error" ? "!" : "›_")}</div><div style="flex:1"><div class="ptitle">${esc(p.content || "")}</div></div><div class="ptime">${esc(p.time || "")}</div></div>${(p.content || "").length > 80 ? `<details><summary>查看详情</summary><pre>${esc(p.content)}</pre></details>` : ""}</div>`).join("") : `<div class="note">没有步骤记录</div>`);
+  $("#processSheet").classList.add("show");
+}
+function closeProcess() { $("#processSheet").classList.remove("show"); }
 function renderChat() {
   const chat = $("#chat");
   if (!current) { if (!sessions.length) newSession(false); current = sessions[0]; }
@@ -591,12 +649,14 @@ function renderChat() {
         return `<div class="worklog ${esc(kind)}"><span class="wdot"></span><div class="wtext">${esc(m.content)}</div><span class="wtime">${esc(m.time || "")}</span></div>`;
       }
       const tools = (m.tools || []).map(t => `<div class="tool"><b>${esc(t.name)}</b><span>${esc(t.detail || "")}</span></div>`).join("");
-      const proc = (m.process || []).length ? `<details class="proc"><summary>工作过程 · ${m.process.length} 步</summary>${m.process.map(p => `<div class="pstep"><span class="pk">${esc(p.kind === "think" ? "思考" : (p.kind === "error" ? "错误" : "步骤"))}</span><span class="pt">${esc(p.content)}</span></div>`).join("")}</details>` : "";
       if (m.role === "user") return `<div class="msg user"><div class="bubble">${esc(m.content)}</div></div>`;
-      return `<div class="msg assistant"><div class="avatar">A</div><div><div class="bubble">${esc(m.content)}</div>${tools ? `<div class="tools">${tools}</div>` : ""}${proc}</div></div>`;
+      const pid = m.pid || (m.pid = "p_" + uid());
+      if (Array.isArray(m.process) && m.process.length) PROC_CACHE[pid] = { process: m.process, duration: m.duration || 0 };
+      const runHead = (m.process && m.process.length) || m.duration ? `<button class="runhead" onclick="openProcess('${pid}')"><span>工作过程</span><b class="dur">共耗时 ${fmtDuration(m.duration || 0)}</b><span>⌄</span></button>` : "";
+      return `<div class="msg assistant">${avatarFor(m.modelKey)}<div class="msgbody">${runHead}<div class="bubble">${esc(m.content)}</div>${tools ? `<div class="tools">${tools}</div>` : ""}</div></div>`;
     }).join("");
   }
-  if (busy) chat.insertAdjacentHTML("beforeend", `<div class="msg assistant"><div class="avatar">A</div><div class="bubble"><span class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span> <span id="statusText">处理中…</span></span></div></div>`);
+  if (busy) chat.insertAdjacentHTML("beforeend", `<div class="msg assistant">${avatarFor()}<div class="msgbody"><div class="bubble"><span class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span> <span id="statusText">处理中…</span></span></div></div>`);
   chat.scrollTop = chat.scrollHeight;
 }
 function addWorkLog(content, kind) {
@@ -608,8 +668,8 @@ function addWorkLog(content, kind) {
   current.messages.push({ role: "work", content: text, kind: kind || "run", time: new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"}) });
   current.updated = now(); persist(); renderChat();
 }
-function addMsg(role, content, tools, modelContent, process) {
-  current.messages.push({ role, content, tools: tools || [], modelContent: modelContent || null, process: Array.isArray(process) ? process : [] });
+function addMsg(role, content, tools, modelContent, process, duration) {
+  current.messages.push({ role, content, tools: tools || [], modelContent: modelContent || null, process: Array.isArray(process) ? process : [], duration: Number(duration || 0), modelKey: currentModelKey() });
   current.updated = now();
   if (current.title === "新任务" && role === "user") current.title = content.slice(0, 18) || "新任务";
   persist(); renderSessions(); renderChat();
@@ -823,7 +883,7 @@ async function mcpConnect(silent) {
   let srv = servers.find(x => x.url === url);
   if (!srv) { srv = { id: "srv_" + uid(), url: url, token: token, name: url.replace(/^https:\/\//, "").slice(0, 40), tools: [] }; servers.push(srv); }
   srv.token = token; srv.url = url;
-  await mcpRpc("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "agent_etc-mobile", version: "1.6.11" } }, srv);
+  await mcpRpc("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "agent_etc-mobile", version: "1.6.12" } }, srv);
   try { await mcpRpc("notifications/initialized", {}, srv); } catch (e) {}
   const r = await mcpRpc("tools/list", {}, srv);
   srv.tools = (r.tools || []).map(t => ({ name: t.name, description: t.description || "", inputSchema: t.inputSchema || null }));
@@ -923,7 +983,7 @@ async function execTool(name, args) {
         if (!command) return { text: "命令为空" };
         const ok = await askUser("要在手机上执行这条命令吗？", ["执行", "取消"]);
         if (ok !== "执行") return { text: "用户取消了命令", detail: "已取消" };
-        const out = a.shellExec(command, String(args.cwd || ""));
+        const out = a.shellExec(command, String(args.cwd || settings.terminalCwd || ""));
         return { text: String(out).slice(0, 20000), detail: command.slice(0, 90) };
       }
       case "memory_save": { const id = memSave(args.text, args.importance); return { text: id ? "已记住" : "内容为空", detail: String(args.text).slice(0, 80) }; }
@@ -1051,10 +1111,11 @@ function systemPrompt() {
   const list = activeSkills();
   const ws = settings.workspaceUri ? `已授权工作目录：${settings.workspaceName}（读写文件默认用这里）` : "工作目录：未选择（文件工具先用应用私有目录）";
   return `你是 agent_etc 手机独立版，一个能真实干活的手机 Agent。作者 ETC。
-当前工作模式：${md.name} —— ${md.desc}。
+当前工作模式：${md.name} —— ${md.desc}。AI 思考等级：${thinkCfg().name}（${thinkCfg().desc}，最多 ${thinkCfg().rounds} 轮工具/推理）。
 当前启用技能（${list.length} 个）：${list.map(k => k.name).join("、")}
 ${skillPromptText()}
 ${ws}
+终端默认目录：${settings.terminalCwd || "应用私有目录"}（shell_exec 会在这里执行；写代码/建文件优先用工作目录或该终端目录）。
 你能读取屏幕文字并在用户授权后点击屏幕；人机验证必须用户本人完成，不要尝试绕过。
 ${qqPersona}
 已连接 MCP 插件工具：${mcpAllTools().map(t => t.name).join("、") || "无"}。
@@ -1108,7 +1169,8 @@ async function runCloud(userText) {
   const headers = { "Content-Type": "application/json" };
   if (settings.apiKey) headers["Authorization"] = "Bearer " + settings.apiKey;
   const toolsUsed = [];
-  for (let round = 0; round < 6; round++) {
+  const rounds = thinkCfg().rounds;
+  for (let round = 0; round < rounds; round++) {
     const body = JSON.stringify({
       model: settings.model, messages, tools: TOOL_DEFS.concat(mcpToolDefs()), tool_choice: "auto",
       temperature: modeOf().temp, max_tokens: modeOf().maxTokens, stream: false
@@ -1146,7 +1208,7 @@ async function runCloud(userText) {
 }
 
 function localSystem() {
-  return `你是 agent_etc 手机本地版，运行在用户手机上。当前模式：${modeOf().name}（${modeOf().desc}）。当前启用技能：${activeSkills().map(k => k.name).join("、") || "自动"}。回答简洁。${skillPromptText().slice(0, 5000)}
+  return `你是 agent_etc 手机本地版，运行在用户手机上。当前模式：${modeOf().name}（${modeOf().desc}）。当前思考等级：${thinkCfg().name}（${thinkCfg().desc}）。当前启用技能：${activeSkills().map(k => k.name).join("、") || "自动"}。回答简洁。${skillPromptText().slice(0, 5000)}
 需要工具时只输出一行 JSON：{"tool":"工具名","args":{...}}，不要解释。
 可用工具：open_url(url), open_app(name), open_app_search(app,query), list_files(), read_file(name), write_file(name,content), create_ppt(name,title,slides), http_fetch(url), image_generate(prompt,size), memory_save(text,importance), memory_search(query), ask_user(question,options), device_info(), screen_read(), screen_find(text), screen_tap_text(text), screen_input(text), screen_enter(), screen_tap(x,y), screen_back(), shell_exec(command), list_skills(), use_skill(name)${mcpAllTools().length ? "，以及 MCP 工具 " + mcpAllTools().map(t => t.name).join("、") : ""}。
 做 PPT 先用 ask_user 确认主题、页数、受众和风格；生成时调用 create_ppt，不要用 write_file 写 .pptx。打开 B 站等 App 用 open_app；搜索时用 screen_find / screen_tap_text / screen_input / screen_enter 按文字操作，不要瞎猜坐标。
@@ -1187,9 +1249,10 @@ async function runLocal(userText) {
   const roles = ["system"], contents = [localSystem()];
   for (const m of current.messages) { if (m.role === "work") continue; roles.push(m.role === "user" ? "user" : "assistant"); contents.push(m.modelContent || m.content); }
   const toolsUsed = [];
-  for (let round = 0; round < 6; round++) {
+  const rounds = settings.localUnlimited ? 40 : thinkCfg().rounds;
+  for (let round = 0; round < rounds; round++) {
     setStatus(round ? "本地模型继续处理…" : "本地模型生成中…"); updateRun(round ? "本地模型继续处理" : "本地模型生成中");
-    const r = await localChat(roles, contents, modeOf().maxTokens);
+    const r = await localChat(roles, contents, Math.max(modeOf().maxTokens, thinkCfg().tokens));
     if (stopRequested) throw new Error("用户结束了任务");
     if (r.error) throw new Error(r.error);
     const call = parseToolJson(r.text);
@@ -1285,13 +1348,15 @@ async function send() {
     const result = settings.mode === "local" ? await runLocal(text || shown) : await runCloud(text || shown);
     busy = false; setBusyUI(false);
     const process = current.messages.slice(workStart).filter(m => m.role === "work");
-    addMsg("assistant", result.text || "（没有返回内容）", result.tools, null, process);
+    const elapsed = run && run.start ? now() - run.start : 0;
+    addMsg("assistant", result.text || "（没有返回内容）", result.tools, null, process, elapsed);
     finishRun("done", result.text || "没有返回内容");
   } catch (e) {
     busy = false; setBusyUI(false);
     const process = current.messages.slice(workStart).filter(m => m.role === "work");
-    if (stopRequested) { addMsg("assistant", "任务已结束。", [], null, process); finishRun("stopped", "用户结束了任务"); }
-    else { addMsg("assistant", "出错了：" + e.message, [], null, process); finishRun("error", e.message); }
+    const elapsed = run && run.start ? now() - run.start : 0;
+    if (stopRequested) { addMsg("assistant", "任务已结束。", [], null, process, elapsed); finishRun("stopped", "用户结束了任务"); }
+    else { addMsg("assistant", "出错了：" + e.message, [], null, process, elapsed); finishRun("error", e.message); }
   }
   renderChat(); updateTop();
 }
@@ -1312,6 +1377,9 @@ function renderSettings() {
       <div class="field"><label>工作模式</label><select id="setWork">
         ${Object.keys(MODES).map(k => `<option value="${k}" ${settings.workMode === k ? "selected" : ""}>${MODES[k].name} · ${MODES[k].desc}</option>`).join("")}
       </select></div>
+      <div class="field"><label>AI 思考等级</label><select id="setThink">
+        ${Object.keys(THINK).map(k => `<option value="${k}" ${settings.thinkLevel === k ? "selected" : ""}>${THINK[k].name} · ${THINK[k].desc}</option>`).join("")}
+      </select></div>
       ${field("API 地址（含 /v1）", "setBase", settings.baseUrl, "url", "https://api.deepseek.com/v1")}
       ${field("API Key", "setKey", settings.apiKey, "password", "sk-…")}
       ${field("模型名", "setModel", settings.model, "text", "deepseek-chat / qwen2.5:7b")}
@@ -1328,6 +1396,7 @@ function renderSettings() {
       <div class="kv"><span>当前模型</span><span>${esc(settings.localName || "未选择")}</span></div>
       <div class="kv"><span>状态</span><span>${settings.localLoading ? "正在加载…" : (settings.localLoaded ? "已加载" : "未加载")}</span></div>
       <div class="kv"><span>自动加载</span><span><input id="autoLocal" type="checkbox" ${settings.autoLoadLocal !== false ? "checked" : ""} style="width:auto"></span></div>
+      <div class="kv"><span>本地长任务</span><span><input id="localUnlimited" type="checkbox" ${settings.localUnlimited !== false ? "checked" : ""} style="width:auto"> 最多40轮</span></div>
       <div class="kv"><span>信息</span><span>${esc(settings.localInfo || "—")}</span></div>
       ${settings.localError ? `<div class="note warn">上次加载失败：${esc(settings.localError)}</div>` : ""}
       <div class="row" style="margin:12px 0"><button class="btn" id="pickModel">选择 .gguf</button><button class="btn primary" id="loadModel" ${settings.localPath ? "" : "disabled"}>${settings.localLoading ? "加载中…" : "加载/重载"}</button></div>
@@ -1342,7 +1411,8 @@ function renderSettings() {
     }).join("") : `<div class="note">还没有任务记录。发送任务后，这里会记录开始时间、每一步和结果。</div>`;
     body.innerHTML = `<div class="section"><h2>任务记录</h2><p class="desc">每次执行都会留下状态、步骤和结果；通知栏和悬浮窗也会同步显示当前任务。</p>${list}<div class="row" style="margin-top:10px"><button class="btn" id="overlayPerm">开启悬浮窗</button><button class="btn" id="keepAlive">启动后台服务</button></div><button class="btn ghost" id="clearRuns" style="width:100%;margin-top:10px">清空已完成记录</button><div class="note">通知栏会显示当前任务；授权悬浮窗后可在其他 App 上方看到状态。App 被系统彻底杀掉后任务会停止。</div></div>`;
   } else if (currentTab === "terminal") {
-    body.innerHTML = `<div class="section"><h2>终端</h2><p class="desc">使用 Android 系统 shell，在当前应用私有目录执行命令。可运行 sh、文件操作和已有工具；未内置完整编译器。</p>
+    body.innerHTML = `<div class="section"><h2>终端</h2><p class="desc">使用内置 32 位 Termux 终端（首次启动后台解压）；可运行 sh、文件操作、Python/apt 等已有工具。默认在应用目录执行，可改成 /sdcard/…；需要系统存储权限。</p>
+      ${field("默认终端目录（可选）", "termCwd", settings.terminalCwd, "text", "/sdcard/Download 或留空用应用目录")}
       <div class="field"><label>命令</label><input id="termCmd" placeholder="例如 ls -la /sdcard 或 echo hello"></div>
       <button class="btn primary" id="termRun" style="width:100%">运行命令</button>
       <div class="note" id="termOut" style="margin-top:10px;white-space:pre-wrap;font-family:monospace;color:#a9cdb7">尚未运行</div>
@@ -1404,7 +1474,7 @@ function renderSettings() {
       <div class="kv"><span>CPU ABI</span><span>${esc(abi)}</span></div>
       <div class="kv"><span>本地引擎</span><span>${abi.indexOf("64") >= 0 ? "arm64-v8a" : "armeabi-v7a（32 位）"}</span></div>
       <div id="toolList">${TOOL_DEFS.map(t => `<div class="kv"><span>${esc(t.function.name)}</span><span style="text-align:right;max-width:65%">${esc(t.function.description)}</span></div>`).join("")}</div>
-      <div class="row" style="margin-top:12px"><button class="btn" id="enableAcc">开启屏幕权限</button><button class="btn" id="testScreen">读一次屏幕</button></div>
+      <div class="row" style="margin-top:12px"><button class="btn" id="grantPerm">申请存储/定位权限</button><button class="btn" id="enableAcc">开启屏幕权限</button><button class="btn" id="testScreen">读一次屏幕</button></div>
       <div class="statusline" id="screenTest">未读取</div>
       <div class="note">屏幕读取/点击依赖 Android 无障碍服务，只能读取当前可见界面，不能绕过验证码或支付确认。浏览器自动化需要系统级调试能力，手机版只提供打开网页和读取网页。</div></div>`;
   } else if (currentTab === "memory") {
@@ -1423,7 +1493,7 @@ function renderSettings() {
       <div class="note">目录权限由系统文件选择器授予，App 只能访问你选中的文件夹；模型文件也是同样方式导入。</div>
       <div class="note">云端模型可以读网页、打开浏览器、分享文本；不能控制手机其他 App 的界面。需要屏幕操作要单独开无障碍服务，本版没有默认开启。</div></div>`;
   } else if (currentTab === "about") {
-    body.innerHTML = `<div class="section"><h2>关于</h2><div class="kv"><span>版本</span><span>1.6.11</span></div><div class="kv"><span>作者</span><span>ETC</span></div><div class="kv"><span>签名</span><span>ETC Code Signing</span></div><div class="kv"><span>依赖</span><span>无电脑端依赖</span></div>
+    body.innerHTML = `<div class="section"><h2>关于</h2><div class="kv"><span>版本</span><span>1.6.12</span></div><div class="kv"><span>作者</span><span>ETC</span></div><div class="kv"><span>签名</span><span>ETC Code Signing</span></div><div class="kv"><span>依赖</span><span>无电脑端依赖</span></div>
       <div class="row" style="margin-top:14px"><button class="btn" id="checkUpdate">检查更新</button><button class="btn" id="openRepo">打开仓库</button></div>
       <div class="statusline" id="updateInfo">点检查更新读取 GitHub Release</div>
       <div class="note">云端 API 由你自己填写并承担费用；本地 GGUF 完全离线，数据不出手机。</div></div>`;
@@ -1434,9 +1504,11 @@ function bindSettings() {
   const bind = (id, ev, fn) => { const el = $("#" + id); if (el) el[ev] = fn; };
   bind("setMode", "onchange", e => { settings.mode = e.target.value; persist(); updateTop(); if (settings.mode === "local") setTimeout(maybeAutoLoadLocal, 200); });
   bind("setWork", "onchange", e => { settings.workMode = e.target.value; persist(); updateTop(); toast("已切换到" + modeOf().name + "模式"); });
+  bind("setThink", "onchange", e => { settings.thinkLevel = e.target.value; persist(); updateTop(); toast("AI 思考等级：" + thinkCfg().name); });
   bind("saveModel", "onclick", () => {
     settings.baseUrl = ($("#setBase").value || "").trim(); settings.apiKey = ($("#setKey").value || "").trim();
-    settings.model = ($("#setModel").value || "").trim(); settings.temperature = Number($("#setTemp").value) || 0.6;
+    settings.model = ($("#setModel").value || "").trim(); settings.thinkLevel = ($("#setThink").value || "advanced");
+    settings.temperature = Number($("#setTemp").value) || 0.6;
     settings.maxTokens = Number($("#setMax").value) || 2048;
     settings.imageUrl = ($("#setImageUrl").value || "").trim(); settings.imageKey = ($("#setImageKey").value || "").trim();
     settings.imageModel = ($("#setImageModel").value || "").trim(); persist(); updateTop(); toast("已保存");
@@ -1445,6 +1517,7 @@ function bindSettings() {
   bind("pickModel2", "onclick", () => { if (android()) android().pickModel("pick"); else toast("不在 Android 环境"); });
   bind("loadModel", "onclick", () => { settings.localCtx = Number($("#setCtx").value) || 2048; settings.localThreads = Number($("#setThreads").value) || 4; persist(); loadLocal(); });
   bind("autoLocal", "onchange", e => { settings.autoLoadLocal = !!e.target.checked; persist(); if (settings.autoLoadLocal && settings.localPath) setTimeout(maybeAutoLoadLocal, 200); });
+  bind("localUnlimited", "onchange", e => { settings.localUnlimited = !!e.target.checked; persist(); toast(e.target.checked ? "本地长任务已开启（最多40轮）" : "已恢复按思考等级限制"); });
   bind("unloadModel", "onclick", () => { if (android()) android().unloadLocal(); settings.localLoaded = false; persist(); updateTop(); renderSettings(); toast("已卸载"); });
   bind("memAdd", "onclick", () => { const t = $("#memText").value; const imp = Number($("#memImp").value); if (memSave(t, imp)) { toast("已记住"); renderSettings(); } });
   bind("memSearch", "onclick", () => { const q = $("#memQuery").value; const hit = memSearch(q, 10); $("#memList").innerHTML = hit.map(m => `<div class="memitem"><button data-forget="${m.id}">忘记</button><div class="mt">${esc(m.text)}</div><div class="mm"><span>重要度 ${m.importance}/5</span><span>强度 ${memStrength(m).toFixed(2)}</span><span>回想 ${m.recallCount || 0} 次</span></div></div>`).join("") || `<div class="note">没有找到</div>`; bindForgets(); });
@@ -1461,7 +1534,8 @@ function bindSettings() {
   bind("overlayPerm", "onclick", () => { if (!android()) return toast("不在 Android 环境"); toast(android().openOverlaySettings()); });
   bind("keepAlive", "onclick", () => { if (!android()) return toast("不在 Android 环境"); toast(android().startBackground ? android().startBackground() : "当前版本不支持"); });
   bind("importSkill", "onclick", () => pickText("skill"));
-  bind("termRun", "onclick", () => { const a = android(); if (!a || !a.shellExec) return toast("当前版本不支持终端"); $("#termOut").textContent = "运行中…"; $("#termOut").textContent = a.shellExec($("#termCmd").value || "", ""); });
+  bind("termCwd", "onchange", e => { settings.terminalCwd = (e.target.value || "").trim(); persist(); toast("已保存终端目录"); });
+  bind("termRun", "onclick", () => { const a = android(); if (!a || !a.shellExec) return toast("当前版本不支持终端"); settings.terminalCwd = ($("#termCwd") ? $("#termCwd").value.trim() : settings.terminalCwd); persist(); $("#termOut").textContent = "运行中…"; $("#termOut").textContent = a.shellExec($("#termCmd").value || "", settings.terminalCwd || ""); });
   bind("qqTest", "onclick", qqTest);
   bind("qqStart", "onclick", qqStart);
   bind("qqStop", "onclick", qqStop);
@@ -1482,6 +1556,7 @@ function bindSettings() {
     settings.mcpServers = mcpServers().filter(x => x.id !== b.dataset.delMcp);
     settings.mcpTools = mcpAllTools(); persist(); updateTop(); renderSettings(); toast("已断开插件服务");
   });
+  bind("grantPerm", "onclick", () => { const a = android(); if (a && a.requestPermissions) a.requestPermissions(); else toast("不在 Android 环境"); });
   bind("enableAcc", "onclick", () => { if (android()) $("#screenTest").textContent = android().openAccessibility(); else toast("不在 Android 环境"); });
   bind("testScreen", "onclick", () => { if (android()) $("#screenTest").textContent = android().screenRead().slice(0, 2500); else toast("不在 Android 环境"); });
   bind("pickWorkspace", "onclick", () => pickWorkspace());
@@ -1513,6 +1588,7 @@ $("#drawer").onclick = (e) => { if (e.target.id === "drawer") closeDrawer(); };
 $("#btnSettings").onclick = () => openSettings("model");
 $("#modelPick").onclick = openModelSheet;
 $("#modelSheet").onclick = (e) => { if (e.target.id === "modelSheet") closeModelSheet(); };
+$("#processSheet").onclick = (e) => { if (e.target.id === "processSheet") closeProcess(); };
 $("#btnCloseSettings").onclick = closeSettings;
 $("#tabs").onclick = (e) => { const b = e.target.closest("button[data-tab]"); if (!b) return; currentTab = b.dataset.tab; document.querySelectorAll("#tabs button").forEach(x => x.classList.toggle("active", x === b)); renderSettings(); };
 $("#btnSend").onclick = () => { if (busy) requestStop(); else send(); };

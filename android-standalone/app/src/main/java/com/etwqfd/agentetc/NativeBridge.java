@@ -109,7 +109,7 @@ public class NativeBridge {
                 int st = battery.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
                 o.put("charging", st == BatteryManager.BATTERY_STATUS_CHARGING || st == BatteryManager.BATTERY_STATUS_FULL);
             }
-            o.put("appVersion", "1.6.11");
+            o.put("appVersion", "1.6.12");
             return o.toString();
         } catch (Throwable e) { return "{}"; }
     }
@@ -914,5 +914,17 @@ public class NativeBridge {
     }
 
     @JavascriptInterface
-    public String appVersion() { return "1.6.11"; }
+    public String appVersion() { return "1.6.12"; }
+
+    @JavascriptInterface
+    public void requestPermissions() {
+        try {
+            activity.runOnUiThread(() -> activity.requestPermissions(new String[]{
+                "android.permission.READ_EXTERNAL_STORAGE",
+                "android.permission.WRITE_EXTERNAL_STORAGE",
+                "android.permission.ACCESS_FINE_LOCATION",
+                "android.permission.ACCESS_COARSE_LOCATION"
+            }, 9002));
+        } catch (Throwable ignored) {}
+    }
 }
