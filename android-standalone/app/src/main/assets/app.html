@@ -1226,6 +1226,7 @@ $("#drawer").querySelector(".drawerpanel").addEventListener("click", e => e.stop
 
 // init
 if (android()) {
+  try { if (!android().localReady || !android().localReady()) { settings.localLoading = false; settings.localLoaded = false; persist(); } } catch (e) {}
   try {
     const wi = JSON.parse(android().workspaceInfo());
     if (wi && wi.ready && !settings.workspaceUri) { settings.workspaceUri = wi.uri; settings.workspaceName = wi.name; persist(); }
