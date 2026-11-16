@@ -263,7 +263,16 @@ const SKILLS = [
   { id: "creative", group: "创意", name: "创意策划", desc: "点子、脚本、分镜", prompt: "做创意先定主题、受众和限制，再给多个方向；每个方向说明画面/节奏/执行成本。" },
   { id: "life", group: "生活", name: "生活助手", desc: "出行、健康、日常", prompt: "生活问题先确认时间、地点和限制；给可执行方案和备选，涉及医疗/法律/金融时提醒找专业人士。" },
   { id: "security", group: "安全", name: "安全隐私", desc: "权限、密钥、风险", prompt: "安全任务先识别资产、权限和数据流；给最小权限和可逆操作，密钥不要写入日志或公开文件。" },
-  { id: "memory", group: "工具", name: "记忆管理", desc: "记住偏好、项目背景", prompt: "值得长期保留的偏好、项目名、路径用 memory_save；一次性内容不要写入长期记忆。" }
+  { id: "memory", group: "工具", name: "记忆管理", desc: "记住偏好、项目背景", prompt: "值得长期保留的偏好、项目名、路径用 memory_save；一次性内容不要写入长期记忆。" },
+  { id: "pdfdoc", group: "办公", name: "PDF/文档", desc: "PDF、Word、长文提取", prompt: "处理 PDF/Word 先确认页数、版式和是否需要保留原格式；提取内容要标明页码/章节，改写时不要丢关键条款。" },
+  { id: "image", group: "创作", name: "图像处理", desc: "生图、修图、识图", prompt: "图像任务先确认用途、尺寸、风格和是否需要透明底；生成后检查主体、文字和比例，不要把参考图特征说错。" },
+  { id: "video", group: "创作", name: "视频创作", desc: "脚本、分镜、剪辑", prompt: "视频任务先定时长、平台、受众和核心信息；给脚本/分镜/镜头节奏，剪辑建议要具体到时间点和转场。" },
+  { id: "browser", group: "工具", name: "浏览器操作", desc: "网页点击、搜索、填表", prompt: "操作网页先用 screen_read 找到真实控件再点击；不要猜坐标，遇到登录/验证码/支付让用户本人完成。" },
+  { id: "terminal", group: "开发", name: "终端构建", desc: "shell、编译、打包", prompt: "终端任务先确认工作目录和命令风险；执行前说明会改什么，构建/打包后检查产物路径和退出码。" },
+  { id: "api", group: "开发", name: "API 调试", desc: "HTTP、鉴权、错误码", prompt: "调试 API 先看请求方法、URL、头、体和服务端状态；区分网络/鉴权/参数/业务错误，不要只贴一段报错。" },
+  { id: "db", group: "开发", name: "数据库", desc: "SQL、表结构、迁移", prompt: "数据库任务先确认引擎、表结构和数据量；给 SQL 时说明字段、索引和事务边界，破坏性操作先备份并确认。" },
+  { id: "mobileops", group: "工具", name: "手机操作", desc: "无障碍、App、通知", prompt: "手机任务先确认 App 名称、当前页面和目标；用 screen_find/screen_tap_text 逐步操作，每步读屏确认，不要连续盲点。" },
+  { id: "qa", group: "开发", name: "测试验收", desc: "用例、回归、证据", prompt: "测试任务先列验收点和风险用例，再执行并记录证据；区分通过、失败、阻塞，不要把没验证的说成通过。" }
 ];
 const DEFAULT_SETTINGS = {
   mode: "cloud", baseUrl: "", apiKey: "", model: "", temperature: 0.6, maxTokens: 2048,
@@ -377,7 +386,7 @@ function updateTop() {
   document.querySelectorAll("#modeTabs button").forEach(b => b.classList.toggle("active", b.dataset.mode === settings.workMode));
   const name = settings.workspaceName || (settings.workspaceUri ? "已选择目录" : "未选择");
   $("#wsBar").innerHTML = "📁 工作目录 <b>" + esc(name) + "</b><span>" + (settings.workspaceUri ? "更换 ›" : "选择 ›") + "</span>";
-  $("#settingsVersion").textContent = (android() ? android().appVersion() : "1.6.5");
+  $("#settingsVersion").textContent = (android() ? android().appVersion() : "1.6.6");
 }
 
 function modelSheetHtml() {
@@ -667,7 +676,7 @@ async function mcpConnect(silent) {
   let srv = servers.find(x => x.url === url);
   if (!srv) { srv = { id: "srv_" + uid(), url: url, token: token, name: url.replace(/^https:\/\//, "").slice(0, 40), tools: [] }; servers.push(srv); }
   srv.token = token; srv.url = url;
-  await mcpRpc("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "agent_etc-mobile", version: "1.6.5" } }, srv);
+  await mcpRpc("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "agent_etc-mobile", version: "1.6.6" } }, srv);
   try { await mcpRpc("notifications/initialized", {}, srv); } catch (e) {}
   const r = await mcpRpc("tools/list", {}, srv);
   srv.tools = (r.tools || []).map(t => ({ name: t.name, description: t.description || "", inputSchema: t.inputSchema || null }));
@@ -1133,7 +1142,7 @@ function renderSettings() {
       <button class="btn primary" id="importSkill" style="width:100%;margin-top:10px">导入 .md / SKILL.md</button>
       <div class="note">多个技能同时启用时，系统会把它们的做事方法一起注入；本地模型上下文较小时会自动压缩每条技能说明。技能只是提示，不会自动获得新权限。</div></div>`;
   } else if (currentTab === "plugins") {
-    body.innerHTML = `<div class="section"><h2>插件 · MCP</h2><p class="desc">连接远程 HTTPS MCP 服务，工具会直接出现在 Agent 的工具列表里。手机版不能运行 npx 本地插件；本地插件请在电脑端安装。</p>
+    body.innerHTML = `<div class="section"><h2>插件 · MCP</h2><p class="desc">连接远程 HTTPS MCP 服务，工具会直接出现在 Agent 的工具列表里。手机版不能运行 npx 本地插件；本地插件请在电脑端安装。可以连续连接多个服务，所有服务的工具会一起生效。</p>
       ${field("MCP 地址（HTTPS）", "mcpUrl", settings.mcpUrl, "url", "https://example.com/mcp")}
       ${field("Token（可选）", "mcpToken", settings.mcpToken, "password", "Bearer token")}
       <button class="btn primary" id="mcpConnect" style="width:100%;margin-bottom:10px">连接并读取工具</button>
@@ -1168,7 +1177,7 @@ function renderSettings() {
       <div class="note">目录权限由系统文件选择器授予，App 只能访问你选中的文件夹；模型文件也是同样方式导入。</div>
       <div class="note">云端模型可以读网页、打开浏览器、分享文本；不能控制手机其他 App 的界面。需要屏幕操作要单独开无障碍服务，本版没有默认开启。</div></div>`;
   } else if (currentTab === "about") {
-    body.innerHTML = `<div class="section"><h2>关于</h2><div class="kv"><span>版本</span><span>1.6.5</span></div><div class="kv"><span>作者</span><span>ETC</span></div><div class="kv"><span>签名</span><span>ETC Code Signing</span></div><div class="kv"><span>依赖</span><span>无电脑端依赖</span></div>
+    body.innerHTML = `<div class="section"><h2>关于</h2><div class="kv"><span>版本</span><span>1.6.6</span></div><div class="kv"><span>作者</span><span>ETC</span></div><div class="kv"><span>签名</span><span>ETC Code Signing</span></div><div class="kv"><span>依赖</span><span>无电脑端依赖</span></div>
       <div class="row" style="margin-top:14px"><button class="btn" id="checkUpdate">检查更新</button><button class="btn" id="openRepo">打开仓库</button></div>
       <div class="statusline" id="updateInfo">点检查更新读取 GitHub Release</div>
       <div class="note">云端 API 由你自己填写并承担费用；本地 GGUF 完全离线，数据不出手机。</div></div>`;
