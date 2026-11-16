@@ -40,13 +40,14 @@ public final class TerminalRuntime {
         try {
             File bash = new File(prefix, "bin/bash");
             File mark = new File(prefix, ".termux-ready");
-            if (!mark.exists() || !bash.exists()) {
+            if (!mark.exists() || !bash.exists() || !librariesReady(prefix)) {
                 extract(ctx, prefix);
                 createLinks(prefix);
                 try (FileOutputStream fos = new FileOutputStream(mark)) {
                     fos.write("termux-arm-v0.119.0-beta.3\n".getBytes(StandardCharsets.UTF_8));
                 }
             }
+            createLinks(prefix);
             new File(prefix, "home").mkdirs();
             new File(prefix, "tmp").mkdirs();
             ready = bash.exists();
@@ -57,6 +58,15 @@ public final class TerminalRuntime {
         } finally {
             extracting = false;
         }
+    }
+
+    private static boolean librariesReady(File prefix) {
+        String[] need = {"lib/libandroid-support.so", "lib/libreadline.so.8.2", "lib/libiconv.so"};
+        for (String n : need) {
+            File f = new File(prefix, n);
+            if (!f.isFile() || f.length() <= 0) return false;
+        }
+        return true;
     }
 
     private static void extract(Context ctx, File prefix) throws Exception {
@@ -147,7 +157,16 @@ public final class TerminalRuntime {
                 pb.environment().put("PREFIX", prefix.getAbsolutePath());
                 pb.environment().put("HOME", new File(prefix, "home").getAbsolutePath());
                 pb.environment().put("TMPDIR", new File(prefix, "tmp").getAbsolutePath());
-                pb.environment().put("LD_LIBRARY_PATH", new File(prefix, "lib").getAbsolutePath());
+                String lib = new File(prefix, "lib").getAbsolutePath();
+                StringBuilder lp = new StringBuilder(lib);
+                try { lp.append(':').append(ctx.getApplicationInfo().nativeLibraryDir); } catch (Throwable ignored) {}
+                pb.environment().put("LD_LIBRARY_PATH", lp.toString());
+                // Termux 的 bash 依赖 libandroid-support/readline/iconv；显式预加载，
+                // 即使某些 ROM 忽略 LD_LIBRARY_PATH 也能链接成功。
+                String preload = new File(prefix, "lib/libandroid-support.so").getAbsolutePath();
+                if (new File(prefix, "lib/libreadline.so.8").isFile()) preload += ":" + new File(prefix, "lib/libreadline.so.8").getAbsolutePath();
+                if (new File(prefix, "lib/libiconv.so").isFile()) preload += ":" + new File(prefix, "lib/libiconv.so").getAbsolutePath();
+                pb.environment().put("LD_PRELOAD", preload);
                 pb.environment().put("PATH", new File(prefix, "bin").getAbsolutePath() + ":/system/bin:/system/xbin:/vendor/bin");
                 pb.environment().put("TERM", "xterm-256color");
                 pb.environment().put("LANG", "C.UTF-8");
@@ -170,6 +189,10 @@ public final class TerminalRuntime {
             else code = p.exitValue();
             String tag = useTermux ? "[Termux 32-bit]" : "[系统 shell]";
             if (ready && bash.isFile() && !arm32) tag += " 设备不支持 32 位 ARM，已回退；内置核心仍可用在 32 位设备上。";
+            if (useTermux && out.indexOf("CANNOT LINK EXECUTABLE") >= 0) {
+                return tag + "\n退出码 " + code + "\n[终端核心] 动态库链接失败，已保留原始输出：\n" + out
+                    + "\n请把上面的完整报错发我；内置库路径已自动指向 " + new File(prefix, "lib").getAbsolutePath();
+            }
             return tag + "\n退出码 " + code + "\n" + out + (useTermux ? "" : (lastError.isEmpty() ? "" : "\n[终端核心] " + lastError));
         } catch (Throwable e) {
             return "终端执行失败：" + e.getMessage() + (lastError.isEmpty() ? "" : "\n[终端核心] " + lastError);

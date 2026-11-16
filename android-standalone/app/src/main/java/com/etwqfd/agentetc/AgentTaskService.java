@@ -44,6 +44,7 @@ public class AgentTaskService extends Service {
     }
 
     public static boolean isRunning() { return instance != null; }
+    public static boolean isTaskRunning() { return "running".equals(state) || "queued".equals(state); }
 
     public static void refresh() {
         AgentTaskService i = instance;

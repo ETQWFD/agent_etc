@@ -63,6 +63,6 @@ cp "$SO_V7" "$OUT/lib/armeabi-v7a/libagentllama.so"
   --ks "$ROOT/certs/ETC-CodeSigning.pfx" --ks-type PKCS12 \
   --ks-pass pass:ETC2026-agent-etc --key-pass pass:ETC2026-agent-etc \
   --ks-key-alias "etc code signing" \
-  --out "$ROOT/dist/agent_etc-1.6.8-android.apk" "$OUT/aligned.apk"
-"$BT/apksigner" verify --print-certs "$ROOT/dist/agent_etc-1.6.8-android.apk" | head -4
-ls -lh "$ROOT/dist/agent_etc-1.6.8-android.apk"
+  --out "$ROOT/dist/agent_etc-1.6.9-android.apk" "$OUT/aligned.apk"
+"$BT/apksigner" verify --print-certs "$ROOT/dist/agent_etc-1.6.9-android.apk" | head -4
+ls -lh "$ROOT/dist/agent_etc-1.6.9-android.apk"

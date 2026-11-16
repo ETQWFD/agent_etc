@@ -1,6 +1,7 @@
 package com.etwqfd.agentetc;
 
 import android.app.Activity;
+import android.app.ActivityManager;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -9,9 +10,11 @@ import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.net.Uri;
 import android.provider.DocumentsContract;
+import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.StatFs;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
@@ -75,6 +78,40 @@ public class NativeBridge {
             o.put("abi", Build.SUPPORTED_ABIS.length > 0 ? Build.SUPPORTED_ABIS[0] : "");
             return o.toString();
         } catch (Exception e) { return "{}"; }
+    }
+
+    @JavascriptInterface
+    public String deviceStats() {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("cores", Runtime.getRuntime().availableProcessors());
+            String load = "0 0 0";
+            try (BufferedReader r = new BufferedReader(new InputStreamReader(new FileInputStream("/proc/loadavg"), StandardCharsets.UTF_8))) {
+                load = r.readLine();
+            } catch (Throwable ignored) {}
+            o.put("load", load == null ? "0 0 0" : load);
+            ActivityManager am = (ActivityManager) activity.getSystemService(Context.ACTIVITY_SERVICE);
+            if (am != null) {
+                ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
+                am.getMemoryInfo(mi);
+                o.put("memAvail", mi.availMem);
+                o.put("memTotal", mi.totalMem);
+                o.put("lowMemory", mi.lowMemory);
+            }
+            StatFs stat = new StatFs(activity.getFilesDir().getAbsolutePath());
+            o.put("diskFree", stat.getAvailableBytes());
+            o.put("diskTotal", stat.getTotalBytes());
+            Intent battery = activity.registerReceiver(null, new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+            if (battery != null) {
+                int level = battery.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+                int scale = battery.getIntExtra(BatteryManager.EXTRA_SCALE, 100);
+                o.put("battery", scale > 0 ? (level * 100 / scale) : level);
+                int st = battery.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+                o.put("charging", st == BatteryManager.BATTERY_STATUS_CHARGING || st == BatteryManager.BATTERY_STATUS_FULL);
+            }
+            o.put("appVersion", "1.6.9");
+            return o.toString();
+        } catch (Throwable e) { return "{}"; }
     }
 
     // ---------- HTTP ----------
@@ -877,5 +914,5 @@ public class NativeBridge {
     }
 
     @JavascriptInterface
-    public String appVersion() { return "1.6.3"; }
+    public String appVersion() { return "1.6.9"; }
 }

@@ -92,8 +92,14 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        // 任务运行中不允许直接退出：返回键只回主页/后台，任务继续在通知栏运行。
+        if (AgentTaskService.isTaskRunning()) {
+            Toast.makeText(this, "任务仍在运行，已退到后台；通知栏可查看进度", Toast.LENGTH_SHORT).show();
+            moveTaskToBack(true);
+            return;
+        }
         if (web != null && web.canGoBack()) web.goBack();
-        else super.onBackPressed();
+        else moveTaskToBack(true);
     }
 
     private void installCrashLogger() {

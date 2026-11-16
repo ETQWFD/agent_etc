@@ -196,6 +196,7 @@ button{cursor:pointer}
     <button data-tab="skills">技能</button>
     <button data-tab="plugins">插件</button>
     <button data-tab="qq">QQ 助手</button>
+    <button data-tab="stats">状态</button>
     <button data-tab="ability">能力</button>
     <button data-tab="tools">工作目录</button>
     <button data-tab="about">关于</button>
@@ -280,6 +281,8 @@ const DEFAULT_SETTINGS = {
   localPath: "", localName: "", localCtx: 2048, localThreads: 4, localLoaded: false, localLoading: false,
   localError: "", autoLoadLocal: true, workMode: "lean", workspaceName: "", workspaceUri: "",
   skillId: "auto", skillIds: ["auto"], customSkills: [],
+  imageUrl: "", imageKey: "", imageModel: "",
+  qqPersona: "简洁、可靠，先给结论，再给必要步骤",
   qqEnabled: false, qqEndpoint: "http://127.0.0.1:3001", qqToken: "", qqAllow: "", qqSelfId: "", qqStatus: "未启动",
   mcpUrl: "", mcpToken: "", mcpTools: []
 };
@@ -388,7 +391,7 @@ function updateTop() {
   document.querySelectorAll("#modeTabs button").forEach(b => b.classList.toggle("active", b.dataset.mode === settings.workMode));
   const name = settings.workspaceName || (settings.workspaceUri ? "已选择目录" : "未选择");
   $("#wsBar").innerHTML = "📁 工作目录 <b>" + esc(name) + "</b><span>" + (settings.workspaceUri ? "更换 ›" : "选择 ›") + "</span>";
-  $("#settingsVersion").textContent = (android() ? android().appVersion() : "1.6.8");
+  $("#settingsVersion").textContent = (android() ? android().appVersion() : "1.6.9");
 }
 
 function modelSheetHtml() {
@@ -422,6 +425,11 @@ function qqStatus(text, selfId) {
   const el = $("#qqStatus"); if (el) el.textContent = settings.qqStatus;
   const se = $("#qqSelf"); if (se) se.textContent = settings.qqSelfId || "未获取";
   updateTop();
+}
+function qqPersonaRead() {
+  const el = $("#qqPersona");
+  if (el && el.value.trim()) settings.qqPersona = el.value.trim();
+  return settings.qqPersona || "";
 }
 function qqBase() {
   const el = $("#qqEndpoint");
@@ -462,6 +470,7 @@ async function qqTest() {
   } catch (e) { qqStatus("测试失败：" + e.message); toast("测试失败：" + e.message); }
 }
 async function qqStart() {
+  qqPersonaRead();
   const base = qqBase();
   if (!base) { toast("先填 OneBot HTTP 地址"); return; }
   qqManual = false; settings.qqEnabled = true; qqStatus("连接中…"); persist();
@@ -500,6 +509,7 @@ async function qqSend(userId, text) {
 }
 async function qqOnMessage(ev) {
   if (!settings.qqEnabled || ev.message_type !== "private") return;
+  qqPersonaRead();
   const userId = String(ev.user_id || "");
   if (!userId || userId === String(settings.qqSelfId || "")) return;
   const allow = String(settings.qqAllow || "").split(/[,，\s]+/).filter(Boolean);
@@ -803,7 +813,7 @@ async function mcpConnect(silent) {
   let srv = servers.find(x => x.url === url);
   if (!srv) { srv = { id: "srv_" + uid(), url: url, token: token, name: url.replace(/^https:\/\//, "").slice(0, 40), tools: [] }; servers.push(srv); }
   srv.token = token; srv.url = url;
-  await mcpRpc("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "agent_etc-mobile", version: "1.6.8" } }, srv);
+  await mcpRpc("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "agent_etc-mobile", version: "1.6.9" } }, srv);
   try { await mcpRpc("notifications/initialized", {}, srv); } catch (e) {}
   const r = await mcpRpc("tools/list", {}, srv);
   srv.tools = (r.tools || []).map(t => ({ name: t.name, description: t.description || "", inputSchema: t.inputSchema || null }));
@@ -841,6 +851,7 @@ const TOOL_DEFS = [
   { type: "function", function: { name: "create_ppt", description: "生成可打开的 .pptx 文件；有工作目录时写入工作目录，否则写应用私有目录", parameters: { type: "object", properties: { name: { type: "string" }, title: { type: "string" }, slides: { type: "array", items: { type: "object", properties: { title: { type: "string" }, bullets: { type: "array", items: { type: "string" } } }, required: ["title"] } } }, required: ["name", "title", "slides"] } } },
   { type: "function", function: { name: "memory_save", description: "把值得长期记住的事实写入记忆", parameters: { type: "object", properties: { text: { type: "string" }, importance: { type: "integer" } }, required: ["text"] } } },
   { type: "function", function: { name: "memory_search", description: "按关键词搜索长期记忆", parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"] } } },
+  { type: "function", function: { name: "image_generate", description: "用已配置的图片生成 API 生成图片，返回图片链接；未配置 API 时明确报错", parameters: { type: "object", properties: { prompt: { type: "string" }, size: { type: "string" } }, required: ["prompt"] } } },
   { type: "function", function: { name: "ask_user", description: "当需要用户本人决定时，弹出选择让用户回答", parameters: { type: "object", properties: { question: { type: "string" }, options: { type: "array", items: { type: "string" } } }, required: ["question"] } } },
   { type: "function", function: { name: "device_info", description: "读取手机型号与 Android 版本", parameters: { type: "object", properties: {} } } },
   { type: "function", function: { name: "share_text", description: "把文本通过系统分享面板发送出去", parameters: { type: "object", properties: { text: { type: "string" } }, required: ["text"] } } },
@@ -907,6 +918,19 @@ async function execTool(name, args) {
       }
       case "memory_save": { const id = memSave(args.text, args.importance); return { text: id ? "已记住" : "内容为空", detail: String(args.text).slice(0, 80) }; }
       case "memory_search": { const hit = memSearch(args.query, 6); return { text: hit.length ? hit.map(m => "- " + m.text + "（强度 " + memStrength(m).toFixed(2) + "）").join("\n") : "没有找到相关记忆", detail: args.query }; }
+      case "image_generate": {
+        if (!settings.imageUrl) return { text: "还没有配置图片生成 API。请到 设置 → 模型服务 填图片 API 地址/Key/模型名；本版不假装有内置图片模型。", detail: "未配置图片 API" };
+        const headers = { "Content-Type": "application/json" };
+        if (settings.imageKey) headers["Authorization"] = "Bearer " + settings.imageKey;
+        const body = JSON.stringify({ model: settings.imageModel || "gpt-image-1", prompt: String(args.prompt || ""), size: String(args.size || "1024x1024"), n: 1 });
+        const r = await http("POST", settings.imageUrl, headers, body);
+        if (r.status === 0 || r.status >= 400) return { text: "图片 API 失败：" + (r.error || r.body || r.status), detail: "图片 API 失败" };
+        let data; try { data = JSON.parse(r.body || "{}"); } catch (e) { return { text: "图片 API 返回不是 JSON", detail: "图片 API" }; }
+        const item = data.data && data.data[0] || {};
+        if (item.url) return { text: "已生成图片：" + item.url + "\n（可直接打开这个链接保存）", detail: "图片 URL" };
+        if (item.b64_json) return { text: "图片 API 返回了 base64，当前手机版不落盘；请把接口改成返回 url。", detail: "图片 b64" };
+        return { text: "图片 API 没有返回 url：" + JSON.stringify(data).slice(0, 500), detail: "图片 API 异常" };
+      }
       case "ask_user": { const ans = await askUser(args.question, args.options || []); return { text: ans, detail: String(args.question).slice(0, 60) }; }
       case "device_info": { const raw = a ? a.deviceInfo() : "{}"; const d = JSON.parse(raw); return { text: "型号：" + d.model + "\n品牌：" + d.brand + "\nAndroid：" + d.android + " (SDK " + d.sdk + ")\nABI：" + d.abi, detail: d.model }; }
       case "share_text": return { text: a ? a.shareText(args.text) : "无 Android 环境", detail: "分享" };
@@ -1013,6 +1037,7 @@ function skillPromptText() {
 }
 function systemPrompt() {
   const md = modeOf();
+  const qqPersona = current && /^QQ /.test(current.title) && settings.qqPersona ? `QQ 远程助手性格：${settings.qqPersona}。` : "";
   const list = activeSkills();
   const ws = settings.workspaceUri ? `已授权工作目录：${settings.workspaceName}（读写文件默认用这里）` : "工作目录：未选择（文件工具先用应用私有目录）";
   return `你是 agent_etc 手机独立版，一个能真实干活的手机 Agent。作者 ETC。
@@ -1021,6 +1046,7 @@ function systemPrompt() {
 ${skillPromptText()}
 ${ws}
 你能读取屏幕文字并在用户授权后点击屏幕；人机验证必须用户本人完成，不要尝试绕过。
+${qqPersona}
 已连接 MCP 插件工具：${mcpAllTools().map(t => t.name).join("、") || "无"}。
 ${md.name === "精简" ? "回答尽量 3–6 行，先给结果，少解释。" : ""}
 ${md.name === "极速" ? "直接给最终结果，不列计划、不重复确认，除非缺关键信息。" : ""}
@@ -1086,7 +1112,10 @@ async function runCloud(userText) {
     if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
     const msg = data.choices && data.choices[0] && data.choices[0].message;
     if (!msg) throw new Error("API 没有返回 message");
+    const think = String(msg.reasoning_content || msg.reasoning || msg.thinking || "").trim();
+    if (think) addWorkLog("思考：" + think.replace(/\s+/g, " ").slice(0, 240), "think");
     const calls = msg.tool_calls || [];
+    if (calls.length) addWorkLog("模型决定执行 " + calls.length + " 个工具");
     if (calls.length) {
       messages.push({ role: "assistant", content: msg.content || "", tool_calls: calls });
       for (const c of calls) {
@@ -1095,6 +1124,7 @@ async function runCloud(userText) {
         setStatus("执行工具：" + name); updateRun("执行工具：" + toolStep(name, args));
         const res = await execTool(name, args);
         if (stopRequested) throw new Error("用户结束了任务");
+        addWorkLog("工具 " + name + " 完成：" + String(res.detail || res.text || "").replace(/\s+/g, " ").slice(0, 140));
         toolsUsed.push({ name, detail: res.detail || "" });
         messages.push({ role: "tool", tool_call_id: c.id, content: res.text });
       }
@@ -1108,7 +1138,7 @@ async function runCloud(userText) {
 function localSystem() {
   return `你是 agent_etc 手机本地版，运行在用户手机上。当前模式：${modeOf().name}（${modeOf().desc}）。当前启用技能：${activeSkills().map(k => k.name).join("、") || "自动"}。回答简洁。${skillPromptText().slice(0, 5000)}
 需要工具时只输出一行 JSON：{"tool":"工具名","args":{...}}，不要解释。
-可用工具：open_url(url), open_app(name), open_app_search(app,query), list_files(), read_file(name), write_file(name,content), create_ppt(name,title,slides), http_fetch(url), memory_save(text,importance), memory_search(query), ask_user(question,options), device_info(), screen_read(), screen_find(text), screen_tap_text(text), screen_input(text), screen_enter(), screen_tap(x,y), screen_back(), shell_exec(command), list_skills(), use_skill(name)${mcpAllTools().length ? "，以及 MCP 工具 " + mcpAllTools().map(t => t.name).join("、") : ""}。
+可用工具：open_url(url), open_app(name), open_app_search(app,query), list_files(), read_file(name), write_file(name,content), create_ppt(name,title,slides), http_fetch(url), image_generate(prompt,size), memory_save(text,importance), memory_search(query), ask_user(question,options), device_info(), screen_read(), screen_find(text), screen_tap_text(text), screen_input(text), screen_enter(), screen_tap(x,y), screen_back(), shell_exec(command), list_skills(), use_skill(name)${mcpAllTools().length ? "，以及 MCP 工具 " + mcpAllTools().map(t => t.name).join("、") : ""}。
 做 PPT 先用 ask_user 确认主题、页数、受众和风格；生成时调用 create_ppt，不要用 write_file 写 .pptx。打开 B 站等 App 用 open_app；搜索时用 screen_find / screen_tap_text / screen_input / screen_enter 按文字操作，不要瞎猜坐标。
 人机验证、验证码、支付必须让用户本人完成。${memContext(current ? current.title : "")}`;
 }
@@ -1153,10 +1183,12 @@ async function runLocal(userText) {
     if (stopRequested) throw new Error("用户结束了任务");
     if (r.error) throw new Error(r.error);
     const call = parseToolJson(r.text);
-    if (!call) return { text: r.text.trim(), tools: toolsUsed };
+    if (!call) { addWorkLog("本地模型已生成最终回答"); return { text: r.text.trim(), tools: toolsUsed }; }
     setStatus("执行工具：" + call.tool); updateRun("执行工具：" + toolStep(call.tool, call.args || {}));
+    addWorkLog("调用工具 " + call.tool);
     const res = await execTool(call.tool, call.args || {});
     if (stopRequested) throw new Error("用户结束了任务");
+    addWorkLog("工具 " + call.tool + " 完成：" + String(res.detail || res.text || "").replace(/\s+/g, " ").slice(0, 140));
     toolsUsed.push({ name: call.tool, detail: res.detail || "" });
     roles.push("assistant"); contents.push(r.text);
     roles.push("user"); contents.push("工具 " + call.tool + " 的结果：\n" + res.text + "\n请继续完成，或直接给出最终回答。");
@@ -1230,6 +1262,7 @@ async function send() {
   const full = text + (attach ? "\n\n[用户附加的文件：" + attach.name + "]\n" + attach.text.slice(0, 120000) : "");
   pendingAttach = null; $("#attachPill").classList.add("hidden");
   addMsg("user", shown, [], full);
+  addWorkLog("分析任务，制定执行计划");
   observeMemory(text);
   busy = true; stopRequested = false; setBusyUI(true); renderChat();
   const run = startRun(text || shown);
@@ -1270,6 +1303,11 @@ function renderSettings() {
       ${field("API Key", "setKey", settings.apiKey, "password", "sk-…")}
       ${field("模型名", "setModel", settings.model, "text", "deepseek-chat / qwen2.5:7b")}
       <div class="row">${field("温度", "setTemp", settings.temperature, "number")}${field("最大 tokens", "setMax", settings.maxTokens, "number")}</div>
+      <h2 style="margin-top:18px">图片生成 API（可选）</h2>
+      <p class="desc">填 OpenAI 兼容的 /images/generations 地址；图片任务会调用它并把结果链接返回。未填则不会假装生成图片。</p>
+      ${field("图片 API 地址", "setImageUrl", settings.imageUrl, "url", "https://api.openai.com/v1/images/generations")}
+      ${field("图片 API Key", "setImageKey", settings.imageKey, "password", "sk-…")}
+      ${field("图片模型", "setImageModel", settings.imageModel, "text", "gpt-image-1 / flux / 你的模型名")}
       <button class="btn primary" id="saveModel">保存设置</button>
       <div class="note">DeepSeek、Kimi、OpenAI、Ollama、LM Studio 等 OpenAI 兼容接口都可以。API Key 只保存在本机 WebView 存储里。</div></div>`;
   } else if (currentTab === "local") {
@@ -1321,11 +1359,31 @@ function renderSettings() {
       ${field("OneBot HTTP 地址", "qqEndpoint", settings.qqEndpoint, "url", "http://127.0.0.1:3001")}
       ${field("Access Token（可选）", "qqToken", settings.qqToken, "password", "网关 token")}
       ${field("允许的 QQ 号（可选，逗号分隔）", "qqAllow", settings.qqAllow, "text", "123456 或留空接收所有私聊")}
+      ${field("AI 性格（仅 QQ 会话）", "qqPersona", settings.qqPersona, "text", "例如：简洁、可靠、先给结论")}
       <div class="row" style="margin:10px 0"><button class="btn" id="qqTest">测试网关</button><button class="btn primary" id="qqStart">${settings.qqEnabled ? "重新连接" : "启动监听"}</button><button class="btn ghost" id="qqStop">停止</button></div>
       <div class="kv"><span>状态</span><span id="qqStatus">${esc(settings.qqStatus || "未启动")}</span></div>
       <div class="kv"><span>登录小号</span><span id="qqSelf">${esc(settings.qqSelfId || "未获取")}</span></div>
       <div class="note">网关启动后点“启动监听”；收到私聊后 AI 会在“QQ 123456”会话里工作，并通过网关回复。扫码、验证码、账号密码都在网关客户端完成，本 App 不保存密码。提示词和工具权限仍按当前设置执行。</div>
       <div class="note">OneBot WebSocket 地址由 HTTP 地址自动推导，例如 http://127.0.0.1:3001 → ws://127.0.0.1:3001。</div></div>`;
+  } else if (currentTab === "stats") {
+    let st = {};
+    try { const a = android(); if (a && a.deviceStats) st = JSON.parse(a.deviceStats() || "{}"); } catch (e) {}
+    const cores = Math.max(1, Number(st.cores || 1));
+    const load1 = parseFloat(String(st.load || "0").split(" ")[0]) || 0;
+    const pressure = Math.min(100, Math.round(load1 / cores * 100));
+    const memTotal = Number(st.memTotal || 0), memAvail = Number(st.memAvail || 0);
+    const memPct = memTotal ? Math.round((memTotal - memAvail) / memTotal * 100) : 0;
+    const diskPct = Number(st.diskTotal || 0) ? Math.round((Number(st.diskTotal) - Number(st.diskFree || 0)) / Number(st.diskTotal) * 100) : 0;
+    body.innerHTML = `<div class="section"><h2>运行状态</h2><p class="desc">真实读取手机 CPU 负载、内存、存储和电池；任务在后台运行时也会更新到通知栏/悬浮窗。</p>
+      <div class="kv"><span>CPU 核心</span><span>${cores} 核</span></div>
+      <div class="kv"><span>CPU 压力</span><span style="color:${pressure > 80 ? "#d36b6b" : pressure > 55 ? "#d8b36b" : "#6ea887"}">${pressure}% · load ${esc(String(st.load || "—").split(" ").slice(0,2).join(" "))}</span></div>
+      <div class="kv"><span>内存</span><span>${memTotal ? (bytes(memAvail) + " 可用 / " + bytes(memTotal) + "（已用 " + memPct + "%）") : "不可读"}</span></div>
+      <div class="kv"><span>存储</span><span>${st.diskTotal ? (bytes(st.diskFree) + " 可用 / " + bytes(st.diskTotal) + "（已用 " + diskPct + "%）") : "不可读"}</span></div>
+      <div class="kv"><span>电池</span><span>${st.battery != null ? esc(String(st.battery) + "%" + (st.charging ? " · 充电中" : "")) : "不可读"}</span></div>
+      <div class="kv"><span>低内存</span><span>${st.lowMemory ? "是" : "否"}</span></div>
+      <div class="kv"><span>当前任务</span><span>${activeRun ? esc(activeRun.title + " · " + activeRun.detail) : "待命"}</span></div>
+      <button class="btn" onclick="renderSettings()" style="margin-top:12px">刷新状态</button>
+      <div class="note">CPU 压力超过 80% 时橙色/红色提示；长时间建模或本地模型推理会明显升高。</div></div>`;
   } else if (currentTab === "ability") {
     let abi = "未知";
     try { abi = android() ? (JSON.parse(android().deviceInfo()).abi || "未知") : "非 Android"; } catch (e) {}
@@ -1352,7 +1410,7 @@ function renderSettings() {
       <div class="note">目录权限由系统文件选择器授予，App 只能访问你选中的文件夹；模型文件也是同样方式导入。</div>
       <div class="note">云端模型可以读网页、打开浏览器、分享文本；不能控制手机其他 App 的界面。需要屏幕操作要单独开无障碍服务，本版没有默认开启。</div></div>`;
   } else if (currentTab === "about") {
-    body.innerHTML = `<div class="section"><h2>关于</h2><div class="kv"><span>版本</span><span>1.6.8</span></div><div class="kv"><span>作者</span><span>ETC</span></div><div class="kv"><span>签名</span><span>ETC Code Signing</span></div><div class="kv"><span>依赖</span><span>无电脑端依赖</span></div>
+    body.innerHTML = `<div class="section"><h2>关于</h2><div class="kv"><span>版本</span><span>1.6.9</span></div><div class="kv"><span>作者</span><span>ETC</span></div><div class="kv"><span>签名</span><span>ETC Code Signing</span></div><div class="kv"><span>依赖</span><span>无电脑端依赖</span></div>
       <div class="row" style="margin-top:14px"><button class="btn" id="checkUpdate">检查更新</button><button class="btn" id="openRepo">打开仓库</button></div>
       <div class="statusline" id="updateInfo">点检查更新读取 GitHub Release</div>
       <div class="note">云端 API 由你自己填写并承担费用；本地 GGUF 完全离线，数据不出手机。</div></div>`;
@@ -1366,7 +1424,9 @@ function bindSettings() {
   bind("saveModel", "onclick", () => {
     settings.baseUrl = ($("#setBase").value || "").trim(); settings.apiKey = ($("#setKey").value || "").trim();
     settings.model = ($("#setModel").value || "").trim(); settings.temperature = Number($("#setTemp").value) || 0.6;
-    settings.maxTokens = Number($("#setMax").value) || 2048; persist(); updateTop(); toast("已保存");
+    settings.maxTokens = Number($("#setMax").value) || 2048;
+    settings.imageUrl = ($("#setImageUrl").value || "").trim(); settings.imageKey = ($("#setImageKey").value || "").trim();
+    settings.imageModel = ($("#setImageModel").value || "").trim(); persist(); updateTop(); toast("已保存");
   });
   bind("pickModel", "onclick", () => { if (android()) android().pickModel("pick"); else toast("不在 Android 环境"); });
   bind("pickModel2", "onclick", () => { if (android()) android().pickModel("pick"); else toast("不在 Android 环境"); });
