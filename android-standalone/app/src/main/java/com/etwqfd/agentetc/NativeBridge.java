@@ -30,6 +30,8 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 public class NativeBridge {
     private final Activity activity;
@@ -308,6 +310,10 @@ public class NativeBridge {
     public void loadLocal(final String id, final String path, final int nCtx, final int threads) {
         new Thread(() -> {
             try {
+                if (!LlamaBridge.available()) {
+                    js("window.__localStatus(" + q(id) + ",false," + q("本地推理库加载失败：" + LlamaBridge.loadErrorText()) + ",{})");
+                    return;
+                }
                 boolean ok = LlamaBridge.load(path, nCtx, threads, 0);
                 String err = ok ? "" : LlamaBridge.lastError();
                 String info = ok ? LlamaBridge.nativeInfo(LlamaBridge.getHandle()) : "{}";
@@ -343,9 +349,7 @@ public class NativeBridge {
                 int n = Math.min(roles.length(), contents.length());
                 String[] r = new String[n], c = new String[n];
                 for (int i = 0; i < n; i++) { r[i] = roles.optString(i, "user"); c[i] = contents.optString(i, ""); }
-                String prompt = LlamaBridge.nativeBuildPrompt(LlamaBridge.getHandle(), r, c);
-                if (prompt == null || prompt.isEmpty()) { js("window.__localReply(" + q(id) + "," + q("") + "," + q("提示词构建失败") + ")"); return; }
-                String text = LlamaBridge.nativeGenerate(LlamaBridge.getHandle(), prompt, maxTokens, temp, topP, topK);
+                String text = LlamaBridge.chat(r, c, maxTokens, temp, topP, topK);
                 if (text == null) text = "";
                 String err = text.isEmpty() ? LlamaBridge.lastError() : "";
                 js("window.__localReply(" + q(id) + "," + q(text) + "," + q(err) + ")");
@@ -627,6 +631,166 @@ public class NativeBridge {
     }
 
     // ---------- phone actions ----------
+    private static String xml(String s) {
+        return (s == null ? "" : s).replace("&", "&amp;").replace("<", "&lt;")
+                .replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&apos;");
+    }
+
+    private static void zipText(ZipOutputStream z, String path, String text) throws Exception {
+        z.putNextEntry(new ZipEntry(path));
+        z.write(text.getBytes(StandardCharsets.UTF_8));
+        z.closeEntry();
+    }
+
+    private static String shapeText(int id, String name, long x, long y, long cx, long cy, int size, boolean bold, String[] lines) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<p:sp><p:nvSpPr><p:cNvPr id=\"").append(id).append("\" name=\"").append(name).append("\"/>")
+          .append("<p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x=\"").append(x).append("\" y=\"").append(y)
+          .append("\"/><a:ext cx=\"").append(cx).append("\" cy=\"").append(cy).append("\"/></a:xfrm>")
+          .append("<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:noFill/></p:spPr>")
+          .append("<p:txBody><a:bodyPr wrap=\"square\"/><a:lstStyle/>");
+        if (lines == null || lines.length == 0) lines = new String[]{""};
+        for (String line : lines) {
+            sb.append("<a:p><a:pPr><a:buNone/></a:pPr><a:r><a:rPr lang=\"zh-CN\" sz=\"").append(size)
+              .append("\" b=\"").append(bold ? "1" : "0").append("\"/><a:t>").append(xml(line)).append("</a:t></a:r></a:p>");
+        }
+        sb.append("</p:txBody></p:sp>");
+        return sb.toString();
+    }
+
+    private static String slideXml(String title, String[] lines) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>")
+          .append("<p:sld xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">")
+          .append("<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>")
+          .append("<p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr>");
+        sb.append(shapeText(2, "Title", 685800, 457200, 10820400, 1371600, 3200, true, new String[]{title}));
+        String[] body = lines == null || lines.length == 0 ? new String[]{" "} : lines;
+        sb.append(shapeText(3, "Body", 914400, 2286000, 10363200, 3657600, 1800, false, body));
+        sb.append("</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>");
+        return sb.toString();
+    }
+
+    @JavascriptInterface
+    public String createPpt(String name, String json) {
+        try {
+            String safe = safeName(name == null || name.isEmpty() ? "presentation.pptx" : name);
+            if (!safe.toLowerCase().endsWith(".pptx")) safe += ".pptx";
+            JSONObject in = new JSONObject(json == null ? "{}" : json);
+            String deckTitle = in.optString("title", "演示文稿");
+            JSONArray slides = in.optJSONArray("slides");
+            if (slides == null) slides = new JSONArray();
+            int count = slides.length();
+            if (count == 0) {
+                JSONArray one = new JSONArray().put(new JSONObject().put("title", deckTitle).put("bullets", new JSONArray()));
+                slides = one; count = 1;
+            }
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            ZipOutputStream z = new ZipOutputStream(bytes);
+            StringBuilder ct = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>")
+                    .append("<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">")
+                    .append("<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>")
+                    .append("<Default Extension=\"xml\" ContentType=\"application/xml\"/>")
+                    .append("<Override PartName=\"/ppt/presentation.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml\"/>")
+                    .append("<Override PartName=\"/ppt/slideMasters/slideMaster1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml\"/>")
+                    .append("<Override PartName=\"/ppt/slideLayouts/slideLayout1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml\"/>")
+                    .append("<Override PartName=\"/ppt/theme/theme1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.theme+xml\"/>")
+                    .append("<Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/>")
+                    .append("<Override PartName=\"/docProps/app.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.extended-properties+xml\"/>");
+            for (int i = 1; i <= count; i++) ct.append("<Override PartName=\"/ppt/slides/slide").append(i).append(".xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slide+xml\"/>");
+            ct.append("</Types>");
+            zipText(z, "[Content_Types].xml", ct.toString());
+            zipText(z, "_rels/.rels", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"ppt/presentation.xml\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/><Relationship Id=\"rId3\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties\" Target=\"docProps/app.xml\"/></Relationships>");
+            StringBuilder pres = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><p:presentation xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\"><p:sldMasterIdLst><p:sldMasterId id=\"2147483648\" r:id=\"rId1\"/></p:sldMasterIdLst><p:sldIdLst>");
+            for (int i = 1; i <= count; i++) pres.append("<p:sldId id=\"").append(255 + i).append("\" r:id=\"rId").append(i + 1).append("\"/>");
+            pres.append("</p:sldIdLst><p:sldSz cx=\"12192000\" cy=\"6858000\"/><p:notesSz cx=\"6858000\" cy=\"9144000\"/></p:presentation>");
+            zipText(z, "ppt/presentation.xml", pres.toString());
+            StringBuilder presRels = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster\" Target=\"slideMasters/slideMaster1.xml\"/>");
+            for (int i = 1; i <= count; i++) presRels.append("<Relationship Id=\"rId").append(i + 1).append("\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide\" Target=\"slides/slide").append(i).append(".xml\"/>");
+            presRels.append("</Relationships>");
+            zipText(z, "ppt/_rels/presentation.xml.rels", presRels.toString());
+            zipText(z, "ppt/slideMasters/slideMaster1.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><p:sldMaster xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld><p:clrMap bg1=\"lt1\" tx1=\"dk1\" bg2=\"lt2\" tx2=\"dk2\" accent1=\"accent1\" accent2=\"accent2\" accent3=\"accent3\" accent4=\"accent4\" accent5=\"accent5\" accent6=\"accent6\" hlink=\"hlink\" folHlink=\"folHlink\"/><p:sldLayoutIdLst><p:sldLayoutId id=\"2147483649\" r:id=\"rId1\"/></p:sldLayoutIdLst><p:txStyles><p:titleStyle><a:lvl1pPr><a:defRPr sz=\"3200\" b=\"1\"/></a:lvl1pPr></p:titleStyle><p:bodyStyle><a:lvl1pPr><a:defRPr sz=\"1800\"/></a:lvl1pPr></p:bodyStyle><p:otherStyle><a:lvl1pPr><a:defRPr sz=\"1800\"/></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>");
+            zipText(z, "ppt/slideMasters/_rels/slideMaster1.xml.rels", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout\" Target=\"../slideLayouts/slideLayout1.xml\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme\" Target=\"../theme/theme1.xml\"/></Relationships>");
+            zipText(z, "ppt/slideLayouts/slideLayout1.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><p:sldLayout xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" type=\"blank\" preserve=\"1\"><p:cSld name=\"Blank\"><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>");
+            zipText(z, "ppt/slideLayouts/_rels/slideLayout1.xml.rels", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster\" Target=\"../slideMasters/slideMaster1.xml\"/></Relationships>");
+            zipText(z, "ppt/theme/theme1.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><a:theme xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" name=\"Office\"><a:themeElements><a:clrScheme name=\"Office\"><a:dk1><a:sysClr val=\"windowText\" lastClr=\"000000\"/></a:dk1><a:lt1><a:sysClr val=\"window\" lastClr=\"FFFFFF\"/></a:lt1><a:dk2><a:srgbClr val=\"44546A\"/></a:dk2><a:lt2><a:srgbClr val=\"E7E6E6\"/></a:lt2><a:accent1><a:srgbClr val=\"4472C4\"/></a:accent1><a:accent2><a:srgbClr val=\"ED7D31\"/></a:accent2><a:accent3><a:srgbClr val=\"A5A5A5\"/></a:accent3><a:accent4><a:srgbClr val=\"FFC000\"/></a:accent4><a:accent5><a:srgbClr val=\"5B9BD5\"/></a:accent5><a:accent6><a:srgbClr val=\"70AD47\"/></a:accent6><a:hlink><a:srgbClr val=\"0563C1\"/></a:hlink><a:folHlink><a:srgbClr val=\"954F72\"/></a:folHlink></a:clrScheme><a:fontScheme name=\"Office\"><a:majorFont><a:latin typeface=\"Calibri\"/><a:ea typeface=\"\"/><a:cs typeface=\"\"/></a:majorFont><a:minorFont><a:latin typeface=\"Calibri\"/><a:ea typeface=\"\"/><a:cs typeface=\"\"/></a:minorFont></a:fontScheme><a:fmtScheme name=\"Office\"><a:fillStyleLst><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w=\"9525\" cap=\"flat\" cmpd=\"sng\" algn=\"ctr\"><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill><a:prstDash val=\"solid\"/></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements><a:objectDefaults/><a:extraClrSchemeLst/></a:theme>");
+            for (int i = 1; i <= count; i++) {
+                JSONObject sl = slides.optJSONObject(i - 1);
+                String st = sl == null ? deckTitle : sl.optString("title", deckTitle);
+                JSONArray bullets = sl == null ? null : sl.optJSONArray("bullets");
+                String[] lines = new String[bullets == null ? 0 : bullets.length()];
+                for (int j = 0; j < lines.length; j++) lines[j] = "• " + bullets.optString(j, "");
+                zipText(z, "ppt/slides/slide" + i + ".xml", slideXml(st, lines));
+                zipText(z, "ppt/slides/_rels/slide" + i + ".xml.rels", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout\" Target=\"../slideLayouts/slideLayout1.xml\"/></Relationships>");
+            }
+            zipText(z, "docProps/core.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><dc:title>" + xml(deckTitle) + "</dc:title><dc:creator>ETC</dc:creator></cp:coreProperties>");
+            zipText(z, "docProps/app.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\"><Application>agent_etc</Application></Properties>");
+            z.finish(); z.close();
+            byte[] data = bytes.toByteArray();
+            if (workspaceUri != null) {
+                Uri root = rootDocUri();
+                if (root != null) {
+                    Uri existing = findInWorkspace(safe);
+                    Uri target = existing;
+                    if (target == null) target = DocumentsContract.createDocument(activity.getContentResolver(), root,
+                            "application/vnd.openxmlformats-officedocument.presentationml.presentation", safe);
+                    if (target != null) {
+                        try (OutputStream os = activity.getContentResolver().openOutputStream(target, "w")) {
+                            if (os != null) { os.write(data); return "已生成 PPT：" + safe + "（" + count + " 页，工作目录）"; }
+                        }
+                    }
+                }
+            }
+            File f = new File(filesDir(), safe);
+            try (FileOutputStream fos = new FileOutputStream(f)) { fos.write(data); }
+            return "已生成 PPT：" + safe + "（" + count + " 页，应用私有目录）";
+        } catch (Throwable e) {
+            return "生成 PPT 失败：" + (e.getMessage() == null ? e.toString() : e.getMessage());
+        }
+    }
+
+    @JavascriptInterface
+    public String openApp(String nameOrPackage) {
+        try {
+            String want = nameOrPackage == null ? "" : nameOrPackage.trim().toLowerCase();
+            String[] candidates;
+            if (want.contains("bilibili") || want.contains("哔哩") || want.contains("b站")) {
+                candidates = new String[]{"tv.danmaku.bili", "tv.danmaku.bilibilihd", "com.bilibili.app"};
+            } else if (want.contains("qq") || want.contains("qq")) {
+                candidates = new String[]{"com.tencent.mobileqq"};
+            } else if (want.contains("微信") || want.contains("wechat")) {
+                candidates = new String[]{"com.tencent.mm"};
+            } else if (want.contains("设置") || want.contains("settings")) {
+                candidates = new String[]{"com.android.settings"};
+            } else {
+                candidates = new String[]{nameOrPackage};
+            }
+            android.content.pm.PackageManager pm = activity.getPackageManager();
+            for (String pkg : candidates) {
+                try {
+                    Intent i = pm.getLaunchIntentForPackage(pkg);
+                    if (i == null) continue;
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    activity.startActivity(i);
+                    return "已打开应用：" + pkg;
+                } catch (Throwable ignored) {}
+            }
+            return "没有找到已安装的应用：" + nameOrPackage + "；如果是网页版，请用 open_url";
+        } catch (Throwable e) { return "打开应用失败：" + e.getMessage(); }
+    }
+
+    @JavascriptInterface
+    public String screenFind(String text) { return AgentAccessibilityService.findText(text); }
+
+    @JavascriptInterface
+    public String screenTapText(String text) { return AgentAccessibilityService.tapText(text); }
+
+    @JavascriptInterface
+    public String screenInput(String text) { return AgentAccessibilityService.setText(text); }
+
+    @JavascriptInterface
+    public String screenEnter() { return AgentAccessibilityService.enter(); }
+
     @JavascriptInterface
     public String openUrl(String url) {
         try {
@@ -670,5 +834,39 @@ public class NativeBridge {
     }
 
     @JavascriptInterface
-    public String appVersion() { return "1.6.2"; }
+    public String taskStatus(String state, String title, String detail) {
+        try {
+            AgentTaskService.update(state, title, detail);
+            return "已更新任务状态";
+        } catch (Throwable e) { return "状态更新失败：" + e.getMessage(); }
+    }
+
+    @JavascriptInterface
+    public String startBackground() {
+        try {
+            if (activity instanceof MainActivity) ((MainActivity) activity).startTaskService();
+            return "后台任务服务已启动";
+        } catch (Throwable e) { return "启动失败：" + e.getMessage(); }
+    }
+
+    @JavascriptInterface
+    public String overlayEnabled() {
+        try {
+            return Build.VERSION.SDK_INT >= 23 && android.provider.Settings.canDrawOverlays(activity) ? "true" : "false";
+        } catch (Throwable e) { return "false"; }
+    }
+
+    @JavascriptInterface
+    public String openOverlaySettings() {
+        try {
+            Intent i = new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:" + activity.getPackageName()));
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            activity.startActivity(i);
+            return "已打开悬浮窗权限设置；授权后回到 App 即可显示";
+        } catch (Throwable e) { return "打开失败：" + e.getMessage(); }
+    }
+
+    @JavascriptInterface
+    public String appVersion() { return "1.6.3"; }
 }

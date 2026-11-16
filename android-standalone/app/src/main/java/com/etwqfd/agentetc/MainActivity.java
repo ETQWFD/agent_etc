@@ -2,6 +2,7 @@ package com.etwqfd.agentetc;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
@@ -47,11 +48,25 @@ public class MainActivity extends Activity {
         web.addJavascriptInterface(bridge, "Android");
         web.loadUrl("file:///android_asset/app.html");
         setContentView(web);
+        startTaskService();
+        if (android.os.Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 9001);
+        }
+    }
+
+    public void startTaskService() {
+        try {
+            Intent i = new Intent(this, AgentTaskService.class);
+            if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(i);
+            else startService(i);
+        } catch (Throwable ignored) {}
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        AgentTaskService.refresh();
         if (web != null) {
             web.post(() -> {
                 try { web.evaluateJavascript("window.__onResume&&window.__onResume()", null); } catch (Throwable ignored) {}

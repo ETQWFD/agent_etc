@@ -106,6 +106,12 @@ Java_com_etwqfd_agentetc_LlamaBridge_nativeBuildPrompt(JNIEnv * env, jclass, jlo
         env->DeleteLocalRef(r);
     }
     const char * tmpl = llama_model_chat_template(s->model, nullptr);
+    if (!tmpl) {
+        std::string out;
+        for (int i = 0; i < n; i++) out += "<|im_start|>" + roles[i] + "\n" + keep[i] + "<|im_end|>\n";
+        out += "<|im_start|>assistant\n";
+        return env->NewStringUTF(out.c_str());
+    }
     int need = llama_chat_apply_template(tmpl, msgs.data(), msgs.size(), true, nullptr, 0);
     if (need < 0) return env->NewStringUTF("");
     std::vector<char> buf(need + 1);
@@ -135,15 +141,23 @@ Java_com_etwqfd_agentetc_LlamaBridge_nativeGenerate(JNIEnv * env, jclass, jlong 
     int got = llama_tokenize(vocab, prompt.c_str(), (int)prompt.size(), tokens.data(), (int)tokens.size(), true, true);
     if (got < 0) { g_last_error = "分词失败"; return env->NewStringUTF(""); }
     tokens.resize(got);
-    if ((int)tokens.size() + max_tokens > s->n_ctx) {
+    if ((int)tokens.size() >= s->n_ctx) {
         g_last_error = "上下文不足：请缩短对话或调大上下文";
         return env->NewStringUTF("");
     }
+    if (max_tokens < 1) max_tokens = 1;
+    if (max_tokens > s->n_ctx - (int)tokens.size()) max_tokens = s->n_ctx - (int)tokens.size();
     llama_memory_clear(llama_get_memory(s->ctx), true);
-    llama_batch batch = llama_batch_get_one(tokens.data(), (int)tokens.size());
-    if (llama_decode(s->ctx, batch) != 0) {
-        g_last_error = "提示词解码失败，内存不足";
-        return env->NewStringUTF("");
+    // n_batch is 256; decode the prompt in chunks instead of passing a >256 token batch
+    int pos = 0;
+    while (pos < (int)tokens.size()) {
+        int take = std::min(256, (int)tokens.size() - pos);
+        llama_batch batch = llama_batch_get_one(tokens.data() + pos, take);
+        if (llama_decode(s->ctx, batch) != 0) {
+            g_last_error = "提示词解码失败，内存不足";
+            return env->NewStringUTF("");
+        }
+        pos += take;
     }
     llama_sampler_chain_params sp = llama_sampler_chain_default_params();
     llama_sampler * smpl = llama_sampler_chain_init(sp);
