@@ -69,6 +69,14 @@ button{cursor:pointer}
 .proc .pstep{display:flex;gap:8px;padding:6px 10px;color:#8fa99a;font-size:11.5px;border-bottom:1px solid rgba(255,255,255,.04)}
 .proc .pstep .pk{flex:0 0 auto;color:#69a9d6;min-width:48px}
 .proc .pstep .pt{flex:1;white-space:pre-wrap;word-break:break-word}
+.prow{border-bottom:1px solid rgba(255,255,255,.06);padding:2px 0}
+.prow summary{list-style:none;cursor:pointer;padding:7px 0;color:#8fa99a;font-size:11.5px}
+.prow summary::-webkit-details-marker{display:none}
+.prow .ptop{display:flex;gap:9px;align-items:flex-start}
+.prow .picon{width:24px;height:24px;flex:0 0 24px;border-radius:8px;background:#18241c;color:#9be7b4;display:flex;align-items:center;justify-content:center;font-size:11px}
+.prow .ptitle{flex:1;white-space:pre-wrap;word-break:break-word;line-height:1.5}
+.prow .ptime{flex:0 0 auto;color:#58685f;font-size:10px;padding-top:3px}
+.prow .pdetail{margin:0 0 8px 33px;padding:9px 11px;background:rgba(255,255,255,.035);border-radius:8px;color:#c7d8cd;font-size:11.5px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
 .msgbody{min-width:0;max-width:calc(100% - 37px);flex:1}
 .runhead{display:flex;align-items:center;gap:7px;width:100%;border:1px solid #2a2a33;background:#121216;border-radius:9px;padding:8px 10px;margin:0 0 7px;color:#8d8d99;font-size:11.5px;text-align:left}
 .runhead b{color:#b7b7c2;font-weight:500}.runhead .dur{margin-left:auto;color:#7f8f85}
@@ -221,6 +229,7 @@ button{cursor:pointer}
     <button data-tab="skills">技能</button>
     <button data-tab="plugins">插件</button>
     <button data-tab="qq">QQ 助手</button>
+    <button data-tab="bili">B站</button>
     <button data-tab="stats">状态</button>
     <button data-tab="ability">能力</button>
     <button data-tab="tools">工作目录</button>
@@ -427,7 +436,7 @@ function updateTop() {
   document.querySelectorAll("#modeTabs button").forEach(b => b.classList.toggle("active", b.dataset.mode === settings.workMode));
   const name = settings.workspaceName || (settings.workspaceUri ? "已选择目录" : "未选择");
   $("#wsBar").innerHTML = "📁 工作目录 <b>" + esc(name) + "</b><span>" + (settings.workspaceUri ? "更换 ›" : "选择 ›") + "</span>";
-  $("#settingsVersion").textContent = (android() ? android().appVersion() : "1.6.12");
+  $("#settingsVersion").textContent = (android() ? android().appVersion() : "1.6.13");
 }
 
 function modelSheetHtml() {
@@ -629,7 +638,7 @@ function openProcess(pid) {
   if (!data) { toast("这条消息没有工作过程记录"); return; }
   const steps = data.process || [];
   $("#processBody").innerHTML = `<div style="color:#8d8d99;font-size:11px;margin:0 0 8px">共耗时 ${fmtDuration(data.duration)} · ${steps.length} 步</div>` +
-    (steps.length ? steps.map(p => `<div class="pstep"><div class="ptop"><div class="picon">${p.kind === "think" ? "T" : (p.kind === "error" ? "!" : "›_")}</div><div style="flex:1"><div class="ptitle">${esc(p.content || "")}</div></div><div class="ptime">${esc(p.time || "")}</div></div>${(p.content || "").length > 80 ? `<details><summary>查看详情</summary><pre>${esc(p.content)}</pre></details>` : ""}</div>`).join("") : `<div class="note">没有步骤记录</div>`);
+    (steps.length ? steps.map(p => `<details class="prow"><summary><div class="ptop"><div class="picon">${p.kind === "think" ? "T" : (p.kind === "error" ? "!" : "›_")}</div><div class="ptitle">${esc(String(p.content || "").slice(0, 96))}${String(p.content || "").length > 96 ? "…" : ""}</div><div class="ptime">${esc(p.time || "")}</div></div></summary><div class="pdetail">${esc(p.content || "")}</div></details>`).join("") : `<div class="note">没有步骤记录</div>`);
   $("#processSheet").classList.add("show");
 }
 function closeProcess() { $("#processSheet").classList.remove("show"); }
@@ -883,7 +892,7 @@ async function mcpConnect(silent) {
   let srv = servers.find(x => x.url === url);
   if (!srv) { srv = { id: "srv_" + uid(), url: url, token: token, name: url.replace(/^https:\/\//, "").slice(0, 40), tools: [] }; servers.push(srv); }
   srv.token = token; srv.url = url;
-  await mcpRpc("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "agent_etc-mobile", version: "1.6.12" } }, srv);
+  await mcpRpc("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "agent_etc-mobile", version: "1.6.13" } }, srv);
   try { await mcpRpc("notifications/initialized", {}, srv); } catch (e) {}
   const r = await mcpRpc("tools/list", {}, srv);
   srv.tools = (r.tools || []).map(t => ({ name: t.name, description: t.description || "", inputSchema: t.inputSchema || null }));
@@ -1448,6 +1457,14 @@ function renderSettings() {
       <div class="kv"><span>登录小号</span><span id="qqSelf">${esc(settings.qqSelfId || "未获取")}</span></div>
       <div class="note">网关启动后点“启动监听”；收到私聊后 AI 会在“QQ 123456”会话里工作，并通过网关回复。扫码、验证码、账号密码都在网关客户端完成，本 App 不保存密码。提示词和工具权限仍按当前设置执行。</div>
       <div class="note">OneBot WebSocket 地址由 HTTP 地址自动推导，例如 http://127.0.0.1:3001 → ws://127.0.0.1:3001。</div></div>`;
+  } else if (currentTab === "bili") {
+    body.innerHTML = `<div class="section"><h2>B站助手</h2><p class="desc">用 B站官方页面登录、打开首页或按关键词搜索视频；登录由 B站官方完成，本 App 不保存手机号、验证码、Cookie 或密码。</p>
+      ${field("搜索关键词", "biliQuery", "", "text", "例如 ESP、我的世界、编程教程")}
+      <div class="row" style="margin:10px 0"><button class="btn primary" id="biliLogin">打开 B站官方登录</button><button class="btn" id="biliHome">打开首页</button><button class="btn" id="biliSearch">搜索视频</button></div>
+      <div class="row"><button class="btn" id="biliApp">打开 B站 App</button><button class="btn" id="biliScreen">读取当前屏幕</button></div>
+      <div class="note" id="biliStatus" style="margin-top:10px">未操作</div>
+      <div class="note">AI 可以读取当前屏幕并帮你找视频、总结评论；但“用你的账号发评论/艾特小号/转发”属于对外发布，必须你逐条确认，当前版本不自动执行，也不代你登录。B站手机号验证码只会在 B站官方页面出现。</div>
+      <div class="note">想登录官方账号：点上面按钮，在 B站官方页面输入手机号并接收官方验证码，或用 B站支持的 QQ/微信登录。本 App 不接管这些凭据。</div></div>`;
   } else if (currentTab === "stats") {
     let st = {};
     try { const a = android(); if (a && a.deviceStats) st = JSON.parse(a.deviceStats() || "{}"); } catch (e) {}
@@ -1493,7 +1510,7 @@ function renderSettings() {
       <div class="note">目录权限由系统文件选择器授予，App 只能访问你选中的文件夹；模型文件也是同样方式导入。</div>
       <div class="note">云端模型可以读网页、打开浏览器、分享文本；不能控制手机其他 App 的界面。需要屏幕操作要单独开无障碍服务，本版没有默认开启。</div></div>`;
   } else if (currentTab === "about") {
-    body.innerHTML = `<div class="section"><h2>关于</h2><div class="kv"><span>版本</span><span>1.6.12</span></div><div class="kv"><span>作者</span><span>ETC</span></div><div class="kv"><span>签名</span><span>ETC Code Signing</span></div><div class="kv"><span>依赖</span><span>无电脑端依赖</span></div>
+    body.innerHTML = `<div class="section"><h2>关于</h2><div class="kv"><span>版本</span><span>1.6.13</span></div><div class="kv"><span>作者</span><span>ETC</span></div><div class="kv"><span>签名</span><span>ETC Code Signing</span></div><div class="kv"><span>依赖</span><span>无电脑端依赖</span></div>
       <div class="row" style="margin-top:14px"><button class="btn" id="checkUpdate">检查更新</button><button class="btn" id="openRepo">打开仓库</button></div>
       <div class="statusline" id="updateInfo">点检查更新读取 GitHub Release</div>
       <div class="note">云端 API 由你自己填写并承担费用；本地 GGUF 完全离线，数据不出手机。</div></div>`;
@@ -1536,6 +1553,11 @@ function bindSettings() {
   bind("importSkill", "onclick", () => pickText("skill"));
   bind("termCwd", "onchange", e => { settings.terminalCwd = (e.target.value || "").trim(); persist(); toast("已保存终端目录"); });
   bind("termRun", "onclick", () => { const a = android(); if (!a || !a.shellExec) return toast("当前版本不支持终端"); settings.terminalCwd = ($("#termCwd") ? $("#termCwd").value.trim() : settings.terminalCwd); persist(); $("#termOut").textContent = "运行中…"; $("#termOut").textContent = a.shellExec($("#termCmd").value || "", settings.terminalCwd || ""); });
+  bind("biliLogin", "onclick", () => { const a=android(); if(!a) return toast("不在 Android 环境"); a.openUrl("https://passport.bilibili.com/login"); $("#biliStatus").textContent="已在官方页面打开登录；请本人完成手机号/验证码或第三方登录"; });
+  bind("biliHome", "onclick", () => { const a=android(); if(!a) return toast("不在 Android 环境"); a.openUrl("https://www.bilibili.com"); $("#biliStatus").textContent="已打开 B站首页"; });
+  bind("biliApp", "onclick", () => { const a=android(); if(!a) return toast("不在 Android 环境"); $("#biliStatus").textContent=a.openApp("bilibili"); });
+  bind("biliSearch", "onclick", () => { const a=android(); if(!a) return toast("不在 Android 环境"); const q=($("#biliQuery")&&$("#biliQuery").value.trim())||"编程"; a.openUrl("https://search.bilibili.com/all?keyword="+encodeURIComponent(q)); $("#biliStatus").textContent="已打开 B站搜索："+q; });
+  bind("biliScreen", "onclick", () => { const a=android(); if(!a) return toast("不在 Android 环境"); const r=a.screenRead(); $("#biliStatus").textContent=String(r).slice(0,1800); });
   bind("qqTest", "onclick", qqTest);
   bind("qqStart", "onclick", qqStart);
   bind("qqStop", "onclick", qqStop);

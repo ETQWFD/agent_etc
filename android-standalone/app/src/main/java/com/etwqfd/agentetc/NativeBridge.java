@@ -109,7 +109,7 @@ public class NativeBridge {
                 int st = battery.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
                 o.put("charging", st == BatteryManager.BATTERY_STATUS_CHARGING || st == BatteryManager.BATTERY_STATUS_FULL);
             }
-            o.put("appVersion", "1.6.12");
+            o.put("appVersion", "1.6.13");
             return o.toString();
         } catch (Throwable e) { return "{}"; }
     }
@@ -914,7 +914,7 @@ public class NativeBridge {
     }
 
     @JavascriptInterface
-    public String appVersion() { return "1.6.12"; }
+    public String appVersion() { return "1.6.13"; }
 
     @JavascriptInterface
     public void requestPermissions() {
