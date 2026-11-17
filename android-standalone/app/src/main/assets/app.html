@@ -436,7 +436,7 @@ function updateTop() {
   document.querySelectorAll("#modeTabs button").forEach(b => b.classList.toggle("active", b.dataset.mode === settings.workMode));
   const name = settings.workspaceName || (settings.workspaceUri ? "已选择目录" : "未选择");
   $("#wsBar").innerHTML = "📁 工作目录 <b>" + esc(name) + "</b><span>" + (settings.workspaceUri ? "更换 ›" : "选择 ›") + "</span>";
-  $("#settingsVersion").textContent = (android() ? android().appVersion() : "1.6.14");
+  $("#settingsVersion").textContent = (android() ? android().appVersion() : "1.6.15");
 }
 
 function modelSheetHtml() {
@@ -892,7 +892,7 @@ async function mcpConnect(silent) {
   let srv = servers.find(x => x.url === url);
   if (!srv) { srv = { id: "srv_" + uid(), url: url, token: token, name: url.replace(/^https:\/\//, "").slice(0, 40), tools: [] }; servers.push(srv); }
   srv.token = token; srv.url = url;
-  await mcpRpc("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "agent_etc-mobile", version: "1.6.14" } }, srv);
+  await mcpRpc("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "agent_etc-mobile", version: "1.6.15" } }, srv);
   try { await mcpRpc("notifications/initialized", {}, srv); } catch (e) {}
   const r = await mcpRpc("tools/list", {}, srv);
   srv.tools = (r.tools || []).map(t => ({ name: t.name, description: t.description || "", inputSchema: t.inputSchema || null }));
@@ -932,7 +932,8 @@ const TOOL_DEFS = [
   { type: "function", function: { name: "memory_search", description: "按关键词搜索长期记忆", parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"] } } },
   { type: "function", function: { name: "image_generate", description: "用已配置的图片生成 API 生成图片，返回图片链接；未配置 API 时明确报错", parameters: { type: "object", properties: { prompt: { type: "string" }, size: { type: "string" } }, required: ["prompt"] } } },
   { type: "function", function: { name: "ask_user", description: "当需要用户本人决定时，弹出选择让用户回答", parameters: { type: "object", properties: { question: { type: "string" }, options: { type: "array", items: { type: "string" } } }, required: ["question"] } } },
-  { type: "function", function: { name: "device_info", description: "读取手机型号与 Android 版本", parameters: { type: "object", properties: {} } } },
+  { type: "function", function: { name: "device_info", description: "读取手机型号、品牌、Android 版本、屏幕分辨率和 ABI", parameters: { type: "object", properties: {} } } },
+  { type: "function", function: { name: "list_apps", description: "列出手机里所有可启动的应用名称和包名；打开不认识的应用前先用它识别", parameters: { type: "object", properties: {} } } },
   { type: "function", function: { name: "share_text", description: "把文本通过系统分享面板发送出去", parameters: { type: "object", properties: { text: { type: "string" } }, required: ["text"] } } },
   { type: "function", function: { name: "clipboard_copy", description: "复制文本到剪贴板", parameters: { type: "object", properties: { text: { type: "string" } }, required: ["text"] } } },
   { type: "function", function: { name: "screen_read", description: "读取当前手机屏幕上的可见文字和可点击控件（需要用户开启无障碍）", parameters: { type: "object", properties: {} } } },
@@ -942,6 +943,7 @@ const TOOL_DEFS = [
   { type: "function", function: { name: "screen_tap_text", description: "按屏幕上的文字精准点击控件（比坐标点击稳）", parameters: { type: "object", properties: { text: { type: "string" } }, required: ["text"] } } },
   { type: "function", function: { name: "screen_input", description: "把文字填入当前屏幕的输入框", parameters: { type: "object", properties: { text: { type: "string" } }, required: ["text"] } } },
   { type: "function", function: { name: "screen_enter", description: "在当前输入框按回车或点搜索", parameters: { type: "object", properties: {} } } },
+  { type: "function", function: { name: "screen_swipe", description: "在当前屏幕上滑动，用来翻页/刷视频/滚动列表（需要无障碍）", parameters: { type: "object", properties: { x1: { type: "integer" }, y1: { type: "integer" }, x2: { type: "integer" }, y2: { type: "integer" }, duration: { type: "integer" } }, required: ["x1","y1","x2","y2"] } } },
   { type: "function", function: { name: "open_app_search", description: "打开指定 App 并在搜索框里搜索一个词；适合哔哩哔哩等 App，不靠猜坐标", parameters: { type: "object", properties: { app: { type: "string" }, query: { type: "string" } }, required: ["app","query"] } } },
   { type: "function", function: { name: "open_accessibility", description: "打开系统无障碍设置，让用户自己授权屏幕读取/点击", parameters: { type: "object", properties: {} } } },
   { type: "function", function: { name: "list_skills", description: "列出手机版内置和导入的技能", parameters: { type: "object", properties: {} } } },
@@ -1011,7 +1013,14 @@ async function execTool(name, args) {
         return { text: "图片 API 没有返回 url：" + JSON.stringify(data).slice(0, 500), detail: "图片 API 异常" };
       }
       case "ask_user": { const ans = await askUser(args.question, args.options || []); return { text: ans, detail: String(args.question).slice(0, 60) }; }
-      case "device_info": { const raw = a ? a.deviceInfo() : "{}"; const d = JSON.parse(raw); return { text: "型号：" + d.model + "\n品牌：" + d.brand + "\nAndroid：" + d.android + " (SDK " + d.sdk + ")\nABI：" + d.abi, detail: d.model }; }
+      case "device_info": { const raw = a ? a.deviceInfo() : "{}"; const d = JSON.parse(raw); return { text: "型号：" + d.model + "\n品牌：" + d.brand + " / " + (d.manufacturer || "") + "\nAndroid：" + d.android + " (SDK " + d.sdk + ")\n屏幕：" + (d.width || "?") + "×" + (d.height || "?") + " @" + (d.density || "?") + "dpi\nABI：" + d.abi + "\n语言：" + (d.locale || ""), detail: d.model }; }
+      case "list_apps": {
+        if (!a) return { text: "无 Android 环境" };
+        try {
+          const data = JSON.parse(a.listApps() || "{}"), apps = data.apps || [];
+          return { text: apps.map(x => "- " + x.name + "  (" + x.package + ")").join("\n") || "没有读到可启动应用", detail: apps.length + " 个可启动应用" };
+        } catch (e) { return { text: "读取应用列表失败：" + e.message, detail: "应用列表" }; }
+      }
       case "share_text": return { text: a ? a.shareText(args.text) : "无 Android 环境", detail: "分享" };
       case "clipboard_copy": return { text: a ? a.copyText(args.text) : "无 Android 环境", detail: "剪贴板" };
       case "screen_read": { const raw = a ? a.screenRead() : "{\"error\":\"无 Android 环境\"}"; return { text: raw, detail: "读取屏幕" }; }
@@ -1021,6 +1030,7 @@ async function execTool(name, args) {
       case "screen_tap_text": { const r = a ? a.screenTapText(args.text) : "无 Android 环境"; return { text: r, detail: String(args.text || "") }; }
       case "screen_input": { const r = a ? a.screenInput(args.text) : "无 Android 环境"; return { text: r, detail: String(args.text || "") }; }
       case "screen_enter": { const r = a ? a.screenEnter() : "无 Android 环境"; return { text: r, detail: "回车/搜索" }; }
+      case "screen_swipe": { const r = a ? a.screenSwipe(Number(args.x1)||0, Number(args.y1)||0, Number(args.x2)||0, Number(args.y2)||0, Number(args.duration)||300) : "无 Android 环境"; return { text: r, detail: `${args.x1},${args.y1} → ${args.x2},${args.y2}` }; }
       case "open_app_search": {
         if (!a) return { text: "无 Android 环境" };
         const app = String(args.app || ""), q = String(args.query || "");
@@ -1219,8 +1229,8 @@ async function runCloud(userText) {
 function localSystem() {
   return `你是 agent_etc 手机本地版，运行在用户手机上。当前模式：${modeOf().name}（${modeOf().desc}）。当前思考等级：${thinkCfg().name}（${thinkCfg().desc}）。当前启用技能：${activeSkills().map(k => k.name).join("、") || "自动"}。回答简洁。${skillPromptText().slice(0, 5000)}
 需要工具时只输出一行 JSON：{"tool":"工具名","args":{...}}，不要解释。
-可用工具：open_url(url), open_app(name), open_app_search(app,query), list_files(), read_file(name), write_file(name,content), create_ppt(name,title,slides), http_fetch(url), image_generate(prompt,size), memory_save(text,importance), memory_search(query), ask_user(question,options), device_info(), screen_read(), screen_find(text), screen_tap_text(text), screen_input(text), screen_enter(), screen_tap(x,y), screen_back(), shell_exec(command), list_skills(), use_skill(name)${mcpAllTools().length ? "，以及 MCP 工具 " + mcpAllTools().map(t => t.name).join("、") : ""}。
-做 PPT 先用 ask_user 确认主题、页数、受众和风格；生成时调用 create_ppt，不要用 write_file 写 .pptx。打开 B 站等 App 用 open_app；搜索时用 screen_find / screen_tap_text / screen_input / screen_enter 按文字操作，不要瞎猜坐标。
+可用工具：open_url(url), open_app(name), open_app_search(app,query), list_files(), read_file(name), write_file(name,content), create_ppt(name,title,slides), http_fetch(url), image_generate(prompt,size), memory_save(text,importance), memory_search(query), ask_user(question,options), device_info(), list_apps(), screen_read(), screen_find(text), screen_tap_text(text), screen_input(text), screen_enter(), screen_swipe(x1,y1,x2,y2), screen_tap(x,y), screen_back(), shell_exec(command), list_skills(), use_skill(name)${mcpAllTools().length ? "，以及 MCP 工具 " + mcpAllTools().map(t => t.name).join("、") : ""}。
+做 PPT 先用 ask_user 确认主题、页数、受众和风格；生成时调用 create_ppt，不要用 write_file 写 .pptx。打开 B 站等 App 先用 list_apps 确认已安装的名称/包名，再 open_app；搜索时用 screen_find / screen_tap_text / screen_input / screen_enter 按文字操作，翻页/刷视频用 screen_swipe，不要瞎猜坐标。
 人机验证、验证码、支付必须让用户本人完成。${memContext(current ? current.title : "")}`;
 }
 function parseToolJson(text) {
@@ -1485,13 +1495,22 @@ function renderSettings() {
       <button class="btn" onclick="renderSettings()" style="margin-top:12px">刷新状态</button>
       <div class="note">CPU 压力超过 80% 时橙色/红色提示；长时间建模或本地模型推理会明显升高。</div></div>`;
   } else if (currentTab === "ability") {
-    let abi = "未知";
-    try { abi = android() ? (JSON.parse(android().deviceInfo()).abi || "未知") : "非 Android"; } catch (e) {}
+    let dev = {};
+    let acc = "未知";
+    try { dev = android() ? JSON.parse(android().deviceInfo()) : {}; } catch (e) {}
+    try { acc = android() ? (android().accessibilityEnabled() === "true" ? "已开启" : "未开启（读屏/点击会失败）") : "非 Android"; } catch (e) {}
+    const abi = dev.abi || "未知";
+    const model = ((dev.manufacturer || "") + " " + (dev.brand || "") + " " + (dev.model || "")).trim() || "未知";
+    const screen = (dev.width || "?") + "×" + (dev.height || "?") + " @" + (dev.density || "?") + "dpi";
     body.innerHTML = `<div class="section"><h2>能力</h2><p class="desc">手机独立版内置的能力。需要系统权限的功能会在使用时由系统弹窗，必须你本人同意。</p>
+      <div class="kv"><span>设备</span><span>${esc(model)}</span></div>
+      <div class="kv"><span>系统</span><span>Android ${esc(dev.android || "")}（SDK ${esc(dev.sdk || "")}）</span></div>
+      <div class="kv"><span>屏幕</span><span>${esc(screen)}</span></div>
       <div class="kv"><span>CPU ABI</span><span>${esc(abi)}</span></div>
+      <div class="kv"><span>无障碍服务</span><span>${esc(acc)}</span></div>
       <div class="kv"><span>本地引擎</span><span>${abi.indexOf("64") >= 0 ? "arm64-v8a" : "armeabi-v7a（32 位）"}</span></div>
       <div id="toolList">${TOOL_DEFS.map(t => `<div class="kv"><span>${esc(t.function.name)}</span><span style="text-align:right;max-width:65%">${esc(t.function.description)}</span></div>`).join("")}</div>
-      <div class="row" style="margin-top:12px"><button class="btn" id="grantPerm">申请存储/定位权限</button><button class="btn" id="enableAcc">开启屏幕权限</button><button class="btn" id="testScreen">读一次屏幕</button></div>
+      <div class="row" style="margin-top:12px"><button class="btn" id="grantPerm">申请存储/定位权限</button><button class="btn" id="enableAcc">开启屏幕权限</button><button class="btn" id="testScreen">读一次屏幕</button><button class="btn" id="listAppsBtn">识别已安装应用</button></div>
       <div class="statusline" id="screenTest">未读取</div>
       <div class="note">屏幕读取/点击依赖 Android 无障碍服务，只能读取当前可见界面，不能绕过验证码或支付确认。浏览器自动化需要系统级调试能力，手机版只提供打开网页和读取网页。</div></div>`;
   } else if (currentTab === "memory") {
@@ -1510,7 +1529,7 @@ function renderSettings() {
       <div class="note">目录权限由系统文件选择器授予，App 只能访问你选中的文件夹；模型文件也是同样方式导入。</div>
       <div class="note">云端模型可以读网页、打开浏览器、分享文本；不能控制手机其他 App 的界面。需要屏幕操作要单独开无障碍服务，本版没有默认开启。</div></div>`;
   } else if (currentTab === "about") {
-    body.innerHTML = `<div class="section"><h2>关于</h2><div class="kv"><span>版本</span><span>1.6.14</span></div><div class="kv"><span>作者</span><span>ETC</span></div><div class="kv"><span>签名</span><span>ETC Code Signing</span></div><div class="kv"><span>依赖</span><span>无电脑端依赖</span></div>
+    body.innerHTML = `<div class="section"><h2>关于</h2><div class="kv"><span>版本</span><span>1.6.15</span></div><div class="kv"><span>作者</span><span>ETC</span></div><div class="kv"><span>签名</span><span>ETC Code Signing</span></div><div class="kv"><span>依赖</span><span>无电脑端依赖</span></div>
       <div class="row" style="margin-top:14px"><button class="btn" id="checkUpdate">检查更新</button><button class="btn" id="openRepo">打开仓库</button></div>
       <div class="statusline" id="updateInfo">点检查更新读取 GitHub Release</div>
       <div class="note">云端 API 由你自己填写并承担费用；本地 GGUF 完全离线，数据不出手机。</div></div>`;
@@ -1581,6 +1600,7 @@ function bindSettings() {
   bind("grantPerm", "onclick", () => { const a = android(); if (a && a.requestPermissions) a.requestPermissions(); else toast("不在 Android 环境"); });
   bind("enableAcc", "onclick", () => { if (android()) $("#screenTest").textContent = android().openAccessibility(); else toast("不在 Android 环境"); });
   bind("testScreen", "onclick", () => { if (android()) $("#screenTest").textContent = android().screenRead().slice(0, 2500); else toast("不在 Android 环境"); });
+  bind("listAppsBtn", "onclick", () => { const a=android(); if(!a) return toast("不在 Android 环境"); try { const d=JSON.parse(a.listApps()||"{}"); $("#screenTest").textContent=(d.apps||[]).map(x=>x.name+"  ("+x.package+")").join("\n")||"没有读到应用"; } catch(e){ $("#screenTest").textContent="读取失败："+e.message; } });
   bind("pickWorkspace", "onclick", () => pickWorkspace());
   bind("clearWorkspace", "onclick", () => { settings.workspaceName = ""; settings.workspaceUri = ""; persist(); updateTop(); renderSettings(); toast("已清除工作目录"); });
   bind("refreshFiles", "onclick", () => { const a = android(); if (!a) return; try { const arr = JSON.parse(settings.workspaceUri ? a.wsList() : a.listFiles()); $("#fileList").textContent = (settings.workspaceUri ? "[" + settings.workspaceName + "]\n" : "[应用私有]\n") + (arr.map(f => f.name + "  " + bytes(f.size)).join("\n") || "目录为空"); } catch (e) { $("#fileList").textContent = "读取失败：" + e.message; } });
@@ -1598,7 +1618,7 @@ function bindForgets() {
   });
 }
 
-function openSettings(tab) { currentTab = tab || "model"; $("#settings").classList.add("show"); document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === currentTab)); renderSettings(); }
+function openSettings(tab) { currentTab = tab || "model"; $("#settings").classList.add("show"); document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === currentTab)); renderSettings(); const sb=$("#settingsBody"); if(sb) sb.scrollTop=0; }
 function closeSettings() { $("#settings").classList.remove("show"); persist(); updateTop(); }
 
 // ---------- events ----------

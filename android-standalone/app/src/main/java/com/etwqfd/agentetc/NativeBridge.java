@@ -73,9 +73,19 @@ public class NativeBridge {
             JSONObject o = new JSONObject();
             o.put("model", Build.MODEL);
             o.put("brand", Build.BRAND);
+            o.put("manufacturer", Build.MANUFACTURER);
+            o.put("device", Build.DEVICE);
+            o.put("product", Build.PRODUCT);
             o.put("android", Build.VERSION.RELEASE);
             o.put("sdk", Build.VERSION.SDK_INT);
             o.put("abi", Build.SUPPORTED_ABIS.length > 0 ? Build.SUPPORTED_ABIS[0] : "");
+            try {
+                android.util.DisplayMetrics dm = activity.getResources().getDisplayMetrics();
+                o.put("width", dm.widthPixels);
+                o.put("height", dm.heightPixels);
+                o.put("density", dm.densityDpi);
+            } catch (Throwable ignored) {}
+            o.put("locale", java.util.Locale.getDefault().toString());
             return o.toString();
         } catch (Exception e) { return "{}"; }
     }
@@ -109,7 +119,7 @@ public class NativeBridge {
                 int st = battery.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
                 o.put("charging", st == BatteryManager.BATTERY_STATUS_CHARGING || st == BatteryManager.BATTERY_STATUS_FULL);
             }
-            o.put("appVersion", "1.6.14");
+            o.put("appVersion", "1.6.15");
             return o.toString();
         } catch (Throwable e) { return "{}"; }
     }
@@ -813,16 +823,69 @@ public class NativeBridge {
             }
             android.content.pm.PackageManager pm = activity.getPackageManager();
             for (String pkg : candidates) {
+                if (launchPackage(pkg)) return "已打开应用：" + pkg;
+            }
+            String byLabel = findLaunchableByLabel(want);
+            if (!byLabel.isEmpty() && launchPackage(byLabel)) return "已打开应用：" + byLabel;
+            return "没有找到已安装的应用：" + nameOrPackage + "；请先用 list_apps 查看手机里已安装应用的准确名称";
+        } catch (Throwable e) { return "打开应用失败：" + e.getMessage(); }
+    }
+
+    @JavascriptInterface
+    public String listApps() {
+        try {
+            android.content.pm.PackageManager pm = activity.getPackageManager();
+            Intent launcher = new Intent(Intent.ACTION_MAIN); launcher.addCategory(Intent.CATEGORY_LAUNCHER);
+            java.util.List<android.content.pm.ResolveInfo> list = pm.queryIntentActivities(launcher, 0);
+            JSONArray arr = new JSONArray();
+            java.util.HashSet<String> seen = new java.util.HashSet<>();
+            for (android.content.pm.ResolveInfo ri : list) {
                 try {
-                    Intent i = pm.getLaunchIntentForPackage(pkg);
-                    if (i == null) continue;
-                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    activity.startActivity(i);
-                    return "已打开应用：" + pkg;
+                    if (ri.activityInfo == null) continue;
+                    String pkg = ri.activityInfo.packageName;
+                    if (pkg == null || pkg.equals(activity.getPackageName()) || !seen.add(pkg)) continue;
+                    String label = ri.loadLabel(pm).toString();
+                    arr.put(new JSONObject().put("name", label == null ? pkg : label).put("package", pkg));
+                    if (arr.length() >= 300) break;
                 } catch (Throwable ignored) {}
             }
-            return "没有找到已安装的应用：" + nameOrPackage + "；如果是网页版，请用 open_url";
-        } catch (Throwable e) { return "打开应用失败：" + e.getMessage(); }
+            return new JSONObject().put("apps", arr).toString();
+        } catch (Throwable e) { return "{\"apps\":[],\"error\":" + q(String.valueOf(e.getMessage())) + "}"; }
+    }
+
+    private boolean launchPackage(String pkg) {
+        try {
+            Intent i = activity.getPackageManager().getLaunchIntentForPackage(pkg);
+            if (i == null) return false;
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            activity.startActivity(i);
+            return true;
+        } catch (Throwable ignored) { return false; }
+    }
+
+    private String findLaunchableByLabel(String want) {
+        try {
+            android.content.pm.PackageManager pm = activity.getPackageManager();
+            Intent launcher = new Intent(Intent.ACTION_MAIN); launcher.addCategory(Intent.CATEGORY_LAUNCHER);
+            java.util.List<android.content.pm.ResolveInfo> list = pm.queryIntentActivities(launcher, 0);
+            String bestPkg = "", bestLabel = "";
+            for (android.content.pm.ResolveInfo ri : list) {
+                try {
+                    if (ri.activityInfo == null) continue;
+                    String label = ri.loadLabel(pm).toString().toLowerCase(java.util.Locale.ROOT);
+                    String pkg = ri.activityInfo.packageName;
+                    if (pkg == null || pkg.equals(activity.getPackageName())) continue;
+                    if (label.equals(want)) return pkg;
+                    if (label.contains(want) && (bestPkg.isEmpty() || label.length() < bestLabel.length())) { bestPkg = pkg; bestLabel = label; }
+                } catch (Throwable ignored) {}
+            }
+            return bestPkg;
+        } catch (Throwable ignored) { return ""; }
+    }
+
+    @JavascriptInterface
+    public String screenSwipe(int x1, int y1, int x2, int y2, int duration) {
+        return AgentAccessibilityService.swipe(x1, y1, x2, y2, duration);
     }
 
     @JavascriptInterface
@@ -914,7 +977,7 @@ public class NativeBridge {
     }
 
     @JavascriptInterface
-    public String appVersion() { return "1.6.14"; }
+    public String appVersion() { return "1.6.15"; }
 
     @JavascriptInterface
     public void requestPermissions() {

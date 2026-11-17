@@ -41,16 +41,21 @@ public class AgentAccessibilityService extends AccessibilityService {
     }
 
     private static void walk(AccessibilityNodeInfo node, JSONArray out, int depth) {
-        if (node == null || depth > 14 || out.length() >= 160) return;
+        if (node == null || depth > 16 || out.length() >= 260) return;
         try {
             String text = node.getText() == null ? "" : node.getText().toString();
             String desc = node.getContentDescription() == null ? "" : node.getContentDescription().toString();
-            if (!text.isEmpty() || !desc.isEmpty() || node.isClickable()) {
+            boolean useful = !text.isEmpty() || !desc.isEmpty() || node.isClickable() || node.isEditable() || node.isScrollable();
+            if (useful && node.isVisibleToUser()) {
                 JSONObject o = new JSONObject();
                 o.put("text", text);
                 o.put("desc", desc);
                 o.put("cls", node.getClassName() == null ? "" : node.getClassName().toString());
+                try { o.put("id", node.getViewIdResourceName() == null ? "" : node.getViewIdResourceName()); } catch (Throwable ignored) {}
                 o.put("clickable", node.isClickable());
+                o.put("editable", node.isEditable());
+                o.put("scrollable", node.isScrollable());
+                o.put("enabled", node.isEnabled());
                 Rect r = new Rect();
                 node.getBoundsInScreen(r);
                 o.put("bounds", new JSONArray(new int[]{r.left, r.top, r.right, r.bottom}));
@@ -68,6 +73,12 @@ public class AgentAccessibilityService extends AccessibilityService {
             JSONObject out = new JSONObject();
             out.put("enabled", true);
             out.put("package", root.getPackageName() == null ? "" : root.getPackageName().toString());
+            try {
+                android.util.DisplayMetrics dm = instance.getResources().getDisplayMetrics();
+                out.put("width", dm.widthPixels);
+                out.put("height", dm.heightPixels);
+                out.put("density", dm.densityDpi);
+            } catch (Throwable ignored) {}
             JSONArray nodes = new JSONArray();
             walk(root, nodes, 0);
             out.put("nodes", nodes);
@@ -96,6 +107,20 @@ public class AgentAccessibilityService extends AccessibilityService {
         String text = n.getText() == null ? "" : n.getText().toString();
         String desc = n.getContentDescription() == null ? "" : n.getContentDescription().toString();
         return text.toLowerCase().contains(q) || desc.toLowerCase().contains(q);
+    }
+
+    private static AccessibilityNodeInfo findExactNode(AccessibilityNodeInfo root, String q) {
+        if (root == null) return null;
+        try {
+            String text = root.getText() == null ? "" : root.getText().toString();
+            String desc = root.getContentDescription() == null ? "" : root.getContentDescription().toString();
+            if (text.toLowerCase().equals(q) || desc.toLowerCase().equals(q)) return root;
+            for (int i = 0; i < root.getChildCount(); i++) {
+                AccessibilityNodeInfo hit = findExactNode(root.getChild(i), q);
+                if (hit != null) return hit;
+            }
+        } catch (Throwable ignored) {}
+        return null;
     }
 
     private static AccessibilityNodeInfo findNode(AccessibilityNodeInfo root, String q, boolean editableOnly) {
@@ -153,10 +178,12 @@ public class AgentAccessibilityService extends AccessibilityService {
         if (!isReady()) return "无障碍服务未开启";
         try {
             AccessibilityNodeInfo root = instance.getRootInActiveWindow();
-            AccessibilityNodeInfo n = findNode(root, text == null ? "" : text.toLowerCase(), false);
+            String q = text == null ? "" : text.toLowerCase();
+            AccessibilityNodeInfo n = findExactNode(root, q);
+            if (n == null) n = findNode(root, q, false);
             if (n == null) return "没有找到：" + text;
             AccessibilityNodeInfo click = n;
-            for (int i = 0; i < 5 && click != null && !click.isClickable(); i++) click = click.getParent();
+            for (int i = 0; i < 10 && click != null && !click.isClickable(); i++) click = click.getParent();
             if (click != null && click.isClickable() && click.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return "已点击：" + text;
             Rect r = new Rect(); n.getBoundsInScreen(r);
             return tap((r.left + r.right) / 2, (r.top + r.bottom) / 2);
@@ -189,6 +216,20 @@ public class AgentAccessibilityService extends AccessibilityService {
             }
             return tapText("搜索");
         } catch (Throwable e) { return "回车失败：" + e.getMessage(); }
+    }
+
+    public static String swipe(int x1, int y1, int x2, int y2, int durationMs) {
+        if (!isReady()) return "无障碍服务未开启";
+        if (Build.VERSION.SDK_INT < 24) return "当前 Android 版本不支持滑动";
+        try {
+            Path path = new Path();
+            path.moveTo(x1, y1);
+            path.lineTo(x2, y2);
+            int d = Math.max(80, Math.min(1200, durationMs <= 0 ? 300 : durationMs));
+            GestureDescription.StrokeDescription stroke = new GestureDescription.StrokeDescription(path, 0, d);
+            boolean ok = instance.dispatchGesture(new GestureDescription.Builder().addStroke(stroke).build(), null, null);
+            return ok ? ("已滑动 " + x1 + "," + y1 + " → " + x2 + "," + y2) : "滑动未执行（可能被系统拦截）";
+        } catch (Exception e) { return "滑动失败：" + e.getMessage(); }
     }
 
     public static String back() {
