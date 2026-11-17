@@ -63,7 +63,8 @@ for n in libandroid-support.so libiconv.so libreadline.so.8.2; do
 done
 cp "$TMP_LIB/libandroid-support.so" "$OUT/lib/armeabi-v7a/libandroid-support.so"
 cp "$TMP_LIB/libiconv.so" "$OUT/lib/armeabi-v7a/libiconv.so"
-( cd "$OUT" && zip -q -0 unsigned.apk lib/arm64-v8a/libagentllama.so lib/armeabi-v7a/libagentllama.so lib/armeabi-v7a/libandroid-support.so lib/armeabi-v7a/libiconv.so )
+cp "$TMP_LIB/libreadline.so.8.2" "$OUT/lib/armeabi-v7a/libreadline.so"
+( cd "$OUT" && zip -q -0 unsigned.apk lib/arm64-v8a/libagentllama.so lib/armeabi-v7a/libagentllama.so lib/armeabi-v7a/libandroid-support.so lib/armeabi-v7a/libiconv.so lib/armeabi-v7a/libreadline.so )
 
 # 4. align + sign
 "$BT/zipalign" -f 4 "$OUT/unsigned.apk" "$OUT/aligned.apk"
@@ -71,6 +72,6 @@ cp "$TMP_LIB/libiconv.so" "$OUT/lib/armeabi-v7a/libiconv.so"
   --ks "$ROOT/certs/ETC-CodeSigning.pfx" --ks-type PKCS12 \
   --ks-pass pass:ETC2026-agent-etc --key-pass pass:ETC2026-agent-etc \
   --ks-key-alias "etc code signing" \
-  --out "$ROOT/dist/agent_etc-1.6.15-android.apk" "$OUT/aligned.apk"
-"$BT/apksigner" verify --print-certs "$ROOT/dist/agent_etc-1.6.15-android.apk" | head -4
-ls -lh "$ROOT/dist/agent_etc-1.6.15-android.apk"
+  --out "$ROOT/dist/agent_etc-1.6.16-android.apk" "$OUT/aligned.apk"
+"$BT/apksigner" verify --print-certs "$ROOT/dist/agent_etc-1.6.16-android.apk" | head -4
+ls -lh "$ROOT/dist/agent_etc-1.6.16-android.apk"

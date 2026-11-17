@@ -41,19 +41,25 @@ public final class TerminalRuntime {
             File bash = new File(prefix, "bin/bash");
             File mark = new File(prefix, ".termux-ready");
             if (!mark.exists() || !bash.exists() || !librariesReady(prefix)) {
-                extract(ctx, prefix);
+                try { extract(ctx, prefix); } catch (Throwable e) {
+                    lastError = "解压主流程：" + e.getClass().getSimpleName() + ": " + e.getMessage();
+                }
+                repairCritical(ctx, prefix);
                 createLinks(prefix);
-                repairLibraries(ctx, prefix);
-                try (FileOutputStream fos = new FileOutputStream(mark)) {
-                    fos.write("termux-arm-v0.119.0-beta.3\n".getBytes(StandardCharsets.UTF_8));
+                if (bash.exists() && librariesReady(prefix)) {
+                    try (FileOutputStream fos = new FileOutputStream(mark)) {
+                        fos.write("termux-arm-v0.119.0-beta.3\n".getBytes(StandardCharsets.UTF_8));
+                    }
                 }
             }
+            repairCritical(ctx, prefix);
             createLinks(prefix);
-            repairLibraries(ctx, prefix);
             new File(prefix, "home").mkdirs();
             new File(prefix, "tmp").mkdirs();
             ready = bash.exists() && librariesReady(prefix);
-            if (!ready) lastError = "bootstrap 已解压，但缺少运行库或 bash；请重新安装/清除应用数据后再试";
+            if (!ready) {
+                lastError = "bootstrap 已解压，但缺少：" + missingList(prefix);
+            }
         } catch (Throwable e) {
             lastError = e.getClass().getSimpleName() + ": " + e.getMessage();
             ready = false;
@@ -62,18 +68,40 @@ public final class TerminalRuntime {
         }
     }
 
-    /**
-     * ZIP 解压偶尔会在覆盖安装/系统清理后留下空文件；按条目精确重取三个关键库。
-     * 若私有 lib 目录仍不可写，bash 还会从 nativeLibraryDir 兜底加载。
-     */
-    private static void repairLibraries(Context ctx, File prefix) {
-        String[] need = {"lib/libandroid-support.so", "lib/libreadline.so.8.2", "lib/libiconv.so"};
-        boolean missing = false;
-        for (String n : need) {
+    private static final String[] CRITICAL = {
+            "bin/bash", "lib/libandroid-support.so", "lib/libreadline.so.8.2", "lib/libiconv.so"
+    };
+
+    private static boolean criticalReady(File prefix) {
+        return librariesReady(prefix) && new File(prefix, "bin/bash").isFile();
+    }
+
+    private static String missingList(File prefix) {
+        StringBuilder b = new StringBuilder();
+        for (String n : CRITICAL) {
             File f = new File(prefix, n);
-            if (!f.isFile() || f.length() <= 0) { missing = true; break; }
+            if (!f.isFile() || f.length() <= 0) {
+                if (b.length() > 0) b.append("、");
+                b.append(n);
+            }
         }
-        if (!missing) return;
+        return b.length() == 0 ? "无" : b.toString();
+    }
+
+    /**
+     * 解压容错：单独补齐 bash 和三个核心库；文件系统禁止创建 lib 时，
+     * 再从 APK 的 nativeLibraryDir 复制一份，避免一句 not found 直接停摆。
+     */
+    private static void repairCritical(Context ctx, File prefix) {
+        File bin = new File(prefix, "bin");
+        File lib = new File(prefix, "lib");
+        try {
+            if (bin.exists() && !bin.isDirectory()) bin.delete();
+            if (lib.exists() && !lib.isDirectory()) lib.delete();
+            bin.mkdirs(); lib.mkdirs();
+        } catch (Throwable ignored) {}
+        if (criticalReady(prefix)) return;
+
         try (InputStream in = ctx.getAssets().open(ASSET, AssetManager.ACCESS_STREAMING);
              ZipInputStream zis = new ZipInputStream(in)) {
             ZipEntry e; byte[] buf = new byte[8192];
@@ -82,7 +110,7 @@ public final class TerminalRuntime {
                 if (name == null) continue;
                 if (name.startsWith("./")) name = name.substring(2);
                 boolean wanted = false;
-                for (String n : need) if (n.equals(name)) { wanted = true; break; }
+                for (String n : CRITICAL) if (n.equals(name)) { wanted = true; break; }
                 if (!wanted) continue;
                 File out = new File(prefix, name);
                 File parent = out.getParentFile();
@@ -93,6 +121,33 @@ public final class TerminalRuntime {
                 }
                 out.setExecutable(true, false);
             }
+        } catch (Throwable ignored) {}
+
+        // 私有 lib 目录仍缺库时，从 nativeLibraryDir 兜底。
+        copyFromNative(ctx, prefix, "lib/libandroid-support.so", "libandroid-support.so");
+        copyFromNative(ctx, prefix, "lib/libiconv.so", "libiconv.so");
+        File rl = new File(prefix, "lib/libreadline.so.8.2");
+        if (!rl.isFile() || rl.length() <= 0) {
+            copyFromNative(ctx, prefix, "lib/libreadline.so.8.2", "libreadline.so");
+            if (!rl.isFile() || rl.length() <= 0) {
+                copyFromNative(ctx, prefix, "lib/libreadline.so.8.2", "libreadline.so.8");
+            }
+        }
+    }
+
+    private static void copyFromNative(Context ctx, File prefix, String targetName, String nativeName) {
+        File target = new File(prefix, targetName);
+        if (target.isFile() && target.length() > 0) return;
+        try {
+            File src = new File(ctx.getApplicationInfo().nativeLibraryDir, nativeName);
+            if (!src.isFile() || src.length() <= 0) return;
+            File parent = target.getParentFile();
+            if (parent != null) parent.mkdirs();
+            try (InputStream in = new FileInputStream(src); OutputStream out = new FileOutputStream(target)) {
+                byte[] buf = new byte[8192]; int n;
+                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            }
+            target.setExecutable(true, false);
         } catch (Throwable ignored) {}
     }
 
@@ -117,20 +172,25 @@ public final class TerminalRuntime {
                 if (name == null || name.isEmpty()) continue;
                 if (name.startsWith("./")) name = name.substring(2);
                 if (name.contains("..")) continue;
-                File out = new File(prefix, name);
-                String outPath = out.getCanonicalPath();
-                if (!outPath.equals(prefixPath) && !outPath.startsWith(prefixPath + File.separator)) continue;
-                if (e.isDirectory()) { out.mkdirs(); continue; }
-                File parent = out.getParentFile();
-                if (parent != null) parent.mkdirs();
-                try (OutputStream fos = new FileOutputStream(out)) {
-                    int n;
-                    while ((n = zis.read(buf)) > 0) fos.write(buf, 0, n);
+                try {
+                    File out = new File(prefix, name);
+                    String outPath = out.getCanonicalPath();
+                    if (!outPath.equals(prefixPath) && !outPath.startsWith(prefixPath + File.separator)) continue;
+                    if (e.isDirectory()) { out.mkdirs(); continue; }
+                    File parent = out.getParentFile();
+                    if (parent != null) parent.mkdirs();
+                    try (OutputStream fos = new FileOutputStream(out)) {
+                        int n;
+                        while ((n = zis.read(buf)) > 0) fos.write(buf, 0, n);
+                    }
+                    if (name.startsWith("bin/") || name.startsWith("libexec/") || name.startsWith("lib/")) {
+                        out.setExecutable(true, false);
+                    }
+                } catch (Throwable ignored) {
+                    // 单个条目失败不终止整包；repairCritical 会单独重取 bash/核心库。
+                } finally {
+                    try { zis.closeEntry(); } catch (Throwable ignored) {}
                 }
-                if (name.startsWith("bin/") || name.startsWith("libexec/") || name.startsWith("lib/")) {
-                    out.setExecutable(true, false);
-                }
-                zis.closeEntry();
             }
         }
     }
@@ -152,11 +212,20 @@ public final class TerminalRuntime {
                 if (linkParent != null) linkParent.mkdirs();
                 File targetFile = target.startsWith("/") ? new File(target) : new File(linkParent, target);
                 if (!targetFile.exists()) continue;
+                if (link.exists()) continue;
                 try {
-                    if (link.exists()) link.delete();
                     Os.symlink(target, link.getAbsolutePath());
                 } catch (Throwable ignored) {
-                    // 某些文件系统不允许符号链接；保留实际文件即可。
+                    // 某些文件系统不允许符号链接：对 readline 直接复制一份。
+                    try {
+                        if (linkName.endsWith("libreadline.so.8")) {
+                            try (InputStream in = new FileInputStream(targetFile); OutputStream out = new FileOutputStream(link)) {
+                                byte[] buf = new byte[8192]; int n;
+                                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                            }
+                            link.setExecutable(true, false);
+                        }
+                    } catch (Throwable ignored2) {}
                 }
             }
         } catch (Throwable ignored) {}
